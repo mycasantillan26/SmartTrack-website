@@ -215,7 +215,7 @@ const UploadCHEDFile = () => {
         <Typography variant="h6" gutterBottom>
           Stepper
         </Typography>
-        <StepperComponent activeStep={1} />
+        <StepperComponent activeStep={3} />
       </Box>
       <Box sx={{ flex: '1' }}>
         <Typography variant="h4" gutterBottom>

@@ -136,7 +136,7 @@ const ReviewCHEDFile = () => {
   
   
   const handleNextClick = () => {
-    navigate(`/upload-ched-file`);
+    navigate(`/upload-student-details-file`);
   };
 
   return (
