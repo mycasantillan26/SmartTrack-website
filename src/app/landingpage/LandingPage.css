@@ -1,0 +1,120 @@
+
+.container {
+    text-align: center;
+    background-color: white;
+    min-height: 100vh; 
+    display: flex;
+    flex-direction: column;
+    position: relative; 
+    overflow: hidden; 
+}
+
+
+.container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 450px; 
+    height: 450px; 
+    background-image: url('../images/dogpaw.png'); 
+    background-size: contain; 
+    background-repeat: no-repeat; 
+    opacity: 0.5; 
+}
+
+.container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 450px; 
+    height: 450px; 
+    background-image: url('../images/dogpaw.png'); 
+    background-size: contain; 
+    background-repeat: no-repeat; 
+    opacity: 0.5; 
+}
+
+.appbar {
+    background-color: maroon; 
+    color: white; 
+    display: flex;
+    justify-content: space-between; 
+    align-items: center; 
+    padding: 10px 20px; 
+    position: relative;
+    z-index: 1; 
+    height: 80px;
+    width: 100%;
+}
+
+.logo-container {
+    display: flex;
+    align-items: left; 
+    width: 30px;
+    height: 30px;
+}
+
+.logo {
+    height: 100%;
+    width: 100%; 
+}
+
+.logo-text {
+    font-size: 24px; 
+    font-weight: bold; 
+    text-transform: uppercase; 
+    display: flex; 
+}
+
+.smart {
+    background-color: gold; 
+    color: white; 
+    padding: 5px 10px; 
+}
+
+.track {
+    background-color: transparent; 
+    color: white; 
+    margin-left: -5px; 
+}
+
+.auth-buttons {
+    display: flex;
+    gap: 10px; 
+}
+
+.sign-in,
+.sign-up {
+    background-color: transparent;
+    color: white;
+    border: none; 
+    border-radius: 5px; 
+    padding: 10px 15px; 
+    cursor: pointer; 
+    font-weight: bold; 
+    text-transform: uppercase; 
+    transition: color 0.3s;
+}
+
+.sign-in:hover,
+.sign-up:hover {
+    color: gold; 
+}
+
+.content {
+    margin-top: 20px; 
+}
+
+
+.center-logo {
+    width: 50%;
+    height: 50vh; 
+    margin: 0 auto; 
+}
+
+.center-logo img {
+    width: 100%;
+    height: auto;
+}

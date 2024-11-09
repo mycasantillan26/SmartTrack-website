@@ -1,0 +1,38 @@
+*{
+padding: 0;
+margin: 0;
+}
+#container{
+    width: 100vw;
+    height: 100px;
+    display: flex;
+    background-color: maroon;
+    justify-content: center;
+    justify-content: space-evenly;
+    z-index: 1;
+}
+#logocontainer{
+    display: flex;
+    align-items: center;
+    color: gold;
+    gap: 20px;
+    z-index: 1;
+}
+#logocontainer img{
+    margin-left: 15px;
+}
+#logocontainer span{
+    color: maroon;
+}
+.auth-buttons{
+    display: flex;
+    align-items: center;
+}
+#yellow{
+    transform: skewX(-20deg);
+    width: 270px;
+    height: 100px;
+    background-color: gold;
+    position: absolute;
+    left: -50px;
+}
