@@ -28,14 +28,15 @@ const UploadETOFile = () => {
         if (subjectDoc.exists()) {
           setSubjectData(subjectDoc.data());
         } else {
-          setSnackbarMessage('Subject not found');
+          setSnackbarMessage('Subject not found.');
           setSnackbarOpen(true);
         }
 
         const fileQuery = query(collection(db, 'uploadedETOFile'), where('subjectId', '==', subjectId));
         const fileDocs = await getDocs(fileQuery);
         if (!fileDocs.empty) {
-          setUploadedFileData(fileDocs.docs[0].data());
+          const fileDoc = fileDocs.docs[0];
+          setUploadedFileData({ id: fileDoc.id, ...fileDoc.data() });
         }
       } catch (error) {
         console.error('Error fetching data:', error);
@@ -63,7 +64,7 @@ const UploadETOFile = () => {
       setSelectedFile(file);
       setSnackbarMessage('File selected: ' + file.name);
     } else {
-      setSnackbarMessage('Invalid file type. Only Excel files (.xls, .xlsx) and CSV files (.csv) are accepted.');
+      setSnackbarMessage('Invalid file type. Only Excel, XLSX, or CSV files are accepted.');
       setSelectedFile(null);
     }
     setSnackbarOpen(true);
@@ -71,8 +72,8 @@ const UploadETOFile = () => {
 
   const handleNext = async () => {
     if (uploadedFileData) {
-      setSnackbarMessage('A file is already uploaded. Please delete it before uploading a new one.');
-      setSnackbarOpen(true);
+      // Navigate to ReviewETOFile with the existing uploaded file docId
+      navigate(`/review-eto-file/${uploadedFileData.id}`);
       return;
     }
 
@@ -95,8 +96,6 @@ const UploadETOFile = () => {
       await uploadBytes(storageRef, selectedFile);
       const fileURL = await getDownloadURL(storageRef);
 
-      console.log('ETOFile successfully uploaded to Firebase Storage.');
-
       // Save File Metadata in Firestore
       const fileDoc = await addDoc(collection(db, 'uploadedETOFile'), {
         subjectId,
@@ -107,7 +106,7 @@ const UploadETOFile = () => {
       });
       const docId = fileDoc.id;
 
-      // Parse Uploaded File
+      // Parse and Save Data to ListOfStudents
       const response = await fetch(fileURL);
       const arrayBuffer = await response.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
@@ -121,7 +120,6 @@ const UploadETOFile = () => {
         return;
       }
 
-      // Detect Header Row
       const headers = [
         'Count',
         'Student ID',
@@ -145,8 +143,6 @@ const UploadETOFile = () => {
       }
 
       const dataRows = rows.slice(headerRowIndex + 1);
-
-      // Save Student Records to Firestore
       const subjectNumber = subjectData?.subjectNumber || 'default';
       const semester = subjectData?.semester || 'default';
       const academicYear = subjectData?.academicYear || 'default';
@@ -168,14 +164,8 @@ const UploadETOFile = () => {
           UploadedBy: userId,
         };
 
-        console.log(`Inserting row ${index + 1}:`, studentData);
         await addDoc(collection(db, listPath), studentData);
       }
-
-      console.log('All student records successfully uploaded to ListOfStudents.');
-
-      setSnackbarMessage('All rows successfully uploaded.');
-      setSnackbarOpen(true);
 
       navigate(`/review-eto-file/${docId}`);
     } catch (error) {
@@ -243,25 +233,30 @@ const UploadETOFile = () => {
           <Box sx={{ mt: 2 }}>
             <Typography variant="body1">Uploaded File:</Typography>
             <p>{uploadedFileData.fileName}</p>
-            <Button variant="contained" color="secondary" onClick={handleDelete}>
+            <Button
+              variant="contained"
+              color="secondary"
+              onClick={handleDelete}
+              sx={{ mr: 2 }}
+            >
               Delete File
             </Button>
           </Box>
         ) : (
-          <>
-            <Box sx={{ mt: 2 }}>
-              <input type="file" accept=".xls,.xlsx,.csv" onChange={handleFileChange} />
-            </Box>
-            <Box sx={{ mt: 2 }}>
-              <Button variant="contained" onClick={handleBack} sx={{ mr: 2 }}>
-                Back
-              </Button>
-              <Button variant="contained" onClick={handleNext}>
-                Next
-              </Button>
-            </Box>
-          </>
+          <Box sx={{ mt: 2 }}>
+            <input type="file" accept=".xls,.xlsx,.csv" onChange={handleFileChange} />
+          </Box>
         )}
+
+        {/* Always show Back and Next buttons */}
+        <Box sx={{ mt: 3 }}>
+          <Button variant="contained" onClick={handleBack} sx={{ mr: 2 }}>
+            Back
+          </Button>
+          <Button variant="contained" onClick={handleNext}>
+            Next
+          </Button>
+        </Box>
 
         <Snackbar
           open={snackbarOpen}
