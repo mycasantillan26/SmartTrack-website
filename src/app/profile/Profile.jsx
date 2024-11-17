@@ -75,17 +75,25 @@ const Profile = ({ visible, onClose }) => {
         return profileImageUrl && profileImageUrl !== userPic;
     };
     
-      const handleImageChange = (e) => {
+    const handleImageChange = (e) => {
         if (isImageFetched()) {
             return;
         }
-        
+    
         const file = e.target.files[0];
         if (file) {
+          
+            const validImageTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'];
+            if (!validImageTypes.includes(file.type)) {
+                alert('Please upload a valid image file (JPEG, JPG, PNG, GIF, WebP).');
+                return;
+            }
+            
             setSelectedImage(file); 
             setProfileImageUrl(URL.createObjectURL(file)); 
         }
     };
+    
 
     const handleSave = async () => {
         setLoading(true);

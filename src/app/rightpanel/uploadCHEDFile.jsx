@@ -5,9 +5,20 @@ import Typography from '@mui/material/Typography';
 import StepperComponent from '../stepper/Stepper';
 import Button from '@mui/material/Button';
 import Snackbar from '@mui/material/Snackbar';
-import { getFirestore, doc, getDoc, query, where, getDocs, collection, addDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  collection,
+  addDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Correctly set the worker source
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const UploadCHEDFile = () => {
   const { subjectId } = useParams();
@@ -16,62 +27,30 @@ const UploadCHEDFile = () => {
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [subjectData, setSubjectData] = useState(null);
-  const [uploadedFileData, setUploadedFileData] = useState(null);
 
   useEffect(() => {
     const fetchSubjectData = async () => {
       const db = getFirestore();
-
       if (!subjectId) {
         setSnackbarMessage('Invalid subject ID.');
         setSnackbarOpen(true);
         return;
       }
-
-      console.log("Fetching subject data for ID:", subjectId);
       try {
         const subjectDoc = await getDoc(doc(db, 'SubjectInformation', subjectId));
         if (subjectDoc.exists()) {
           setSubjectData(subjectDoc.data());
         } else {
-          setSnackbarMessage('Subject not found');
+          setSnackbarMessage('Subject not found.');
           setSnackbarOpen(true);
         }
       } catch (error) {
-        console.error('Error fetching subject data:', error);
         setSnackbarMessage('Error fetching subject data: ' + error.message);
         setSnackbarOpen(true);
       }
     };
 
-    const fetchUploadedFileData = async () => {
-      const db = getFirestore();
-
-      if (!subjectId) {
-        setSnackbarMessage('Invalid subject ID.');
-        setSnackbarOpen(true);
-        return;
-      }
-
-      console.log("Fetching uploaded file data for subject ID:", subjectId);
-      try {
-        const q = query(collection(db, 'uploadedCHEDFile'), where('subjectId', '==', subjectId));
-        const querySnapshot = await getDocs(q);
-        if (!querySnapshot.empty) {
-          const fileData = querySnapshot.docs[0].data();
-          setUploadedFileData({ ...fileData, id: querySnapshot.docs[0].id });
-        } else {
-          console.log("No uploaded file data found for subject ID:", subjectId);
-        }
-      } catch (error) {
-        console.error('Error fetching uploaded file data:', error);
-        setSnackbarMessage('Error fetching uploaded file data: ' + error.message);
-        setSnackbarOpen(true);
-      }
-    };
-
     fetchSubjectData();
-    fetchUploadedFileData();
   }, [subjectId]);
 
   const handleBack = () => {
@@ -79,12 +58,6 @@ const UploadCHEDFile = () => {
   };
 
   const handleNext = async () => {
-    if (uploadedFileData) {
-      console.log("Navigating to review page with existing file ID:", uploadedFileData.id);
-      navigate(`/review-ched-file/${uploadedFileData.id}`);
-      return;
-    }
-
     if (!selectedFile) {
       setSnackbarMessage('Please upload a file before proceeding.');
       setSnackbarOpen(true);
@@ -92,29 +65,13 @@ const UploadCHEDFile = () => {
     }
 
     const fileName = selectedFile.name;
-    console.log("Selected File Name:", fileName);
 
     try {
       const auth = getAuth();
       const userId = auth.currentUser?.uid;
-      if (!userId) throw new Error("User not authenticated.");
+      if (!userId) throw new Error('User not authenticated.');
 
       const db = getFirestore();
-      const q = query(
-        collection(db, 'uploadedCHEDFile'),
-        where('subjectId', '==', subjectId),
-        where('fileName', '==', fileName)
-      );
-
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        const existingFileId = querySnapshot.docs[0].id;
-        console.log("Navigating to review page with existing file ID:", existingFileId);
-        navigate(`/review-ched-file/${existingFileId}`);
-        return;
-      }
-
       const docRef = await addDoc(collection(db, 'uploadedCHEDFile'), {
         subjectId: subjectId,
         userId: userId,
@@ -124,86 +81,94 @@ const UploadCHEDFile = () => {
 
       const storage = getStorage();
       const fileRef = ref(storage, `CHEDFile/${subjectId}/${docRef.id}/${fileName}`);
-
       await uploadBytes(fileRef, selectedFile);
       const fileURL = await getDownloadURL(fileRef);
 
       await updateDoc(docRef, { fileURL });
 
-      console.log("Navigating to review page with new file ID:", docRef.id);
+      const extractedData = await processPdfFile(selectedFile);
+
+      if (subjectData) {
+        const path = `StudentsSerialNumber/${subjectData.subjectNumber}-${subjectData.semester}-${subjectData.academicYear}`;
+        const batch = extractedData.map((row) => ({
+          ...row,
+          subjectId: subjectId,
+        }));
+
+        const collectionRef = collection(db, path);
+
+        for (const record of batch) {
+          await addDoc(collectionRef, record);
+        }
+      }
+
+      setSnackbarMessage('File uploaded and data saved successfully.');
+      setSnackbarOpen(true);
       navigate(`/review-ched-file/${docRef.id}`);
     } catch (error) {
-      console.error('Error uploading file:', error);
       setSnackbarMessage('Error uploading file: ' + error.message);
       setSnackbarOpen(true);
     }
-};
+  };
 
+  const processPdfFile = async (file) => {
+    const fileReader = new FileReader();
+
+    return new Promise((resolve, reject) => {
+      fileReader.onload = async (event) => {
+        const typedArray = new Uint8Array(event.target.result);
+        try {
+          const pdf = await pdfjsLib.getDocument(typedArray).promise;
+          const extractedData = [];
+
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const rows = textContent.items.map((item) => item.str);
+
+            for (const row of rows) {
+              const columns = row.split(/\s+/);
+              if (columns.length >= 6) {
+                const [no, serialNo, ay, surname, firstname, middleName] = columns;
+                extractedData.push({
+                  no: no.trim(),
+                  serialNo: serialNo.trim(),
+                  ay: ay.trim(),
+                  surname: surname.trim(),
+                  firstname: firstname.trim(),
+                  middleName: middleName.trim(),
+                });
+              }
+            }
+          }
+
+          resolve(extractedData);
+        } catch (error) {
+          reject(error);
+        }
+      };
+
+      fileReader.onerror = () => {
+        reject(new Error('Error reading file.'));
+      };
+
+      fileReader.readAsArrayBuffer(file);
+    });
+  };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
-    const acceptedFileTypes = [
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'text/csv',
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
+    const acceptedFileTypes = ['application/pdf'];
 
     if (file && acceptedFileTypes.includes(file.type)) {
-      if (!uploadedFileData) {
-        setSelectedFile(file);
-        setSnackbarMessage('File selected: ' + file.name);
-      } else {
-        setSnackbarMessage('You must remove the existing file before uploading a new one.');
-        setSelectedFile(null);
-      }
+      setSelectedFile(file);
+      setSnackbarMessage('File selected: ' + file.name);
     } else {
-      setSnackbarMessage('Invalid file type. Please upload an Excel, CSV, PDF, or Word document.');
+      setSnackbarMessage('Invalid file type. Please upload a PDF document.');
       setSelectedFile(null);
     }
     setSnackbarOpen(true);
   };
-
-  const handleRemoveUploadedFile = async () => {
-    if (uploadedFileData) {
-      const storage = getStorage();
-      const fileRef = ref(storage, `CHEDFile/${subjectId}/${uploadedFileData.id}/${uploadedFileData.fileName}`);
-  
-      try {
-        await deleteObject(fileRef);
-        console.log("File deleted from storage.");
-      } catch (error) {
-        console.error("Error deleting file from storage:", error);
-        setSnackbarMessage("Error deleting file from storage: " + error.message);
-        setSnackbarOpen(true);
-        return;
-      }
-  
-      const db = getFirestore();
-      const fileDocRef = doc(db, 'uploadedCHEDFile', uploadedFileData.id);
-  
-      try {
-        await deleteDoc(fileDocRef);
-        console.log("File document deleted from Firestore.");
-      } catch (error) {
-        console.error("Error deleting file document from Firestore:", error);
-        setSnackbarMessage("Error deleting file document from Firestore: " + error.message);
-        setSnackbarOpen(true);
-        return;
-      }
-  
-    
-      setUploadedFileData(null);
-      setSelectedFile(null);
-      setSnackbarMessage("File removed successfully.");
-      setSnackbarOpen(true);
-    } else {
-      setSnackbarMessage("No file to remove.");
-      setSnackbarOpen(true);
-    }
-  };
-  
 
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
@@ -221,34 +186,14 @@ const UploadCHEDFile = () => {
         <Typography variant="h4" gutterBottom>
           Upload CHED File
         </Typography>
-        <Typography variant="body1">
-          Uploaded ETO File ID: {subjectId}
-        </Typography>
+        <Typography variant="body1">Uploaded ETO File ID: {subjectId}</Typography>
         {subjectData && (
-          <Typography variant="body1">
-            Subject Name: {subjectData.subjectName}
-          </Typography>
+          <Typography variant="body1">Subject Name: {subjectData.subjectName}</Typography>
         )}
 
-        {uploadedFileData ? (
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body1">Uploaded File:</Typography>
-            <p>
-              File Name: {uploadedFileData.fileName}
-              <span
-                style={{ color: 'red', cursor: 'pointer', marginLeft: '10px' }}
-                onClick={handleRemoveUploadedFile}
-              >
-                Remove
-              </span>
-            </p>
-          </Box>
-        ) : (
-          <input type="file" onChange={handleFileChange} />
-        )}
-
+        <input type="file" accept=".pdf" onChange={handleFileChange} />
         <Box sx={{ mt: 3 }}>
-          <Button variant="contained" onClick={handleBack}>
+          <Button variant="contained" onClick={handleBack} sx={{ mr: 2 }}>
             Back
           </Button>
           <Button variant="contained" onClick={handleNext}>

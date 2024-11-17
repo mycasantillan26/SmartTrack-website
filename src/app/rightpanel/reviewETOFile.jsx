@@ -1,114 +1,151 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
-import { getStorage, ref, getDownloadURL } from 'firebase/storage';
-import Snackbar from '@mui/material/Snackbar';
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
-import Paper from '@mui/material/Paper';
+import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TableSortLabel,
+  Paper,
+  Box,
+  Typography,
+  Snackbar,
+  Button,
+  TextField,
+  Modal,
+} from '@mui/material';
 import StepperComponent from '../stepper/Stepper';
-import Button from '@mui/material/Button';
-import * as XLSX from 'xlsx';
 
-
-const TableRow = ({ item, columns }) => (
-  <tr>
-    {columns.map((col, colIndex) => (
-      <td key={colIndex} style={{ padding: '10px', border: '1px solid #ddd', textAlign: 'left' }}>
-        {item[col] !== undefined ? item[col] : ''} 
-      </td>
-    ))}
-  </tr>
-);
-
-// ReviewETOFile component
 const ReviewETOFile = () => {
   const { docId } = useParams();
   const [fileData, setFileData] = useState(null);
+  const [subjectData, setSubjectData] = useState(null);
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [rows, setRows] = useState([]);
-  const [columns, setColumns] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sortColumn, setSortColumn] = useState(null);
+  const [sortOrder, setSortOrder] = useState('asc'); // 'asc' or 'desc'
+  const [selectedRow, setSelectedRow] = useState(null); // Modal data
+  const [isModalOpen, setIsModalOpen] = useState(false); // Modal state
   const navigate = useNavigate();
-  const storage = getStorage();
+
+  const headers = [
+    { id: 'Count', label: 'Count' },
+    { id: 'StudentID', label: 'Student ID' },
+    { id: 'StudentName', label: 'Student Name' },
+    { id: 'CourseYear', label: 'Course-Year' },
+    { id: 'Gender', label: 'Gender' },
+    { id: 'SubjectCode', label: 'Subject Code' },
+    { id: 'Section', label: 'Section' },
+    { id: 'DateOfBirth', label: 'Date of Birth' },
+    { id: 'HomeAddress', label: 'Home Address' },
+    { id: 'ContactNumber', label: 'Contact Number' },
+  ];
 
   useEffect(() => {
-    const fetchFileData = async () => {
-      const db = getFirestore();
-      const fileDoc = await getDoc(doc(db, 'uploadedETOFile', docId));
+    const fetchStudentData = async () => {
+      try {
+        const db = getFirestore();
 
-      if (fileDoc.exists()) {
-        const fileData = fileDoc.data();
-        setFileData(fileData);
-        const { subjectId, fileName } = fileData;
+        const fileDocRef = doc(db, 'uploadedETOFile', docId);
+        const fileDoc = await getDoc(fileDocRef);
 
-        if (fileName && subjectId) {
-          const fileRef = ref(storage, `ETOFile/${subjectId}/${docId}/${fileName}`);
+        if (fileDoc.exists()) {
+          const fileData = fileDoc.data();
+          setFileData(fileData);
 
-          try {
-            const downloadURL = await getDownloadURL(fileRef);
-            fetchAndParseFile(downloadURL);
-          } catch (error) {
-            setSnackbarMessage('Error fetching download URL: ' + error.message);
+          const subjectDocRef = doc(db, 'SubjectInformation', fileData.subjectId);
+          const subjectDoc = await getDoc(subjectDocRef);
+
+          if (subjectDoc.exists()) {
+            const subjectData = subjectDoc.data();
+            setSubjectData(subjectData);
+
+            const subjectNumber = subjectData.subjectNumber;
+            const semester = subjectData.semester;
+            const academicYear = subjectData.academicYear;
+
+            const listPath = `ListOfStudents/${subjectNumber}-${semester}-${academicYear}/students`;
+            const studentQuery = collection(db, listPath);
+            const studentSnapshot = await getDocs(studentQuery);
+
+            if (!studentSnapshot.empty) {
+              const studentRows = studentSnapshot.docs.map((doc, index) => ({
+                id: index + 1,
+                Count: index + 1,
+                StudentID: doc.data().StudentID || '',
+                StudentName: doc.data().StudentName || '',
+                CourseYear: doc.data().CourseYear || '',
+                Gender: doc.data().Gender || '',
+                SubjectCode: doc.data().SubjectCode || '',
+                Section: doc.data().Section || '',
+                DateOfBirth: doc.data().DateOfBirth || '',
+                HomeAddress: doc.data().HomeAddress || '',
+                ContactNumber: doc.data().ContactNumber || '',
+              }));
+
+              setRows(studentRows);
+            } else {
+              setSnackbarMessage('No students found in ListOfStudents for the specified subject.');
+              setSnackbarOpen(true);
+            }
+          } else {
+            setSnackbarMessage('Subject information not found.');
             setSnackbarOpen(true);
           }
         } else {
-          setSnackbarMessage('File name or subject ID is missing.');
+          setSnackbarMessage('Uploaded file metadata not found.');
           setSnackbarOpen(true);
         }
-      } else {
-        setSnackbarMessage('No such document!');
+      } catch (error) {
+        console.error('Error fetching student data:', error.message);
+        setSnackbarMessage(`Error fetching student data: ${error.message}`);
         setSnackbarOpen(true);
       }
       setLoading(false);
     };
 
-    fetchFileData();
-  }, [docId, storage]);
+    fetchStudentData();
+  }, [docId]);
 
-  const fetchAndParseFile = async (url) => {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      const arrayBuffer = await response.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+  const handleSearchChange = (e) => {
+    setSearchQuery(e.target.value);
+  };
 
-     
-      console.log('Parsed JSON data:', jsonData);
+  const handleSort = (columnId) => {
+    const isAsc = sortColumn === columnId && sortOrder === 'asc';
+    const order = isAsc ? 'desc' : 'asc';
+    setSortColumn(columnId);
+    setSortOrder(order);
 
-      if (jsonData.length > 0) {
-     
-        const headers = jsonData[4].map(header => header.trim()); // Trim ang whitespace
-        setColumns(headers);
-        console.log('Parsed headers:', headers);
+    const sortedRows = [...rows].sort((a, b) => {
+      if (a[columnId] < b[columnId]) return order === 'asc' ? -1 : 1;
+      if (a[columnId] > b[columnId]) return order === 'asc' ? 1 : -1;
+      return 0;
+    });
 
-        // Parse rows
-        const rowData = jsonData.slice(5).map((row) => {
-          const rowObj = {};
-          headers.forEach((header, headerIndex) => {
-            rowObj[header] = row[headerIndex] !== undefined ? row[headerIndex] : ''; 
-          });
-          return rowObj;
-        });
+    setRows(sortedRows);
+  };
 
-      
-        console.log('Parsed rows:', rowData);
+  const filteredRows = rows.filter((row) =>
+    headers.some((header) =>
+      row[header.id]?.toString().toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  );
 
-        setRows(rowData);
-      } else {
-        setSnackbarMessage('The Excel file is empty or could not be parsed.');
-        setSnackbarOpen(true);
-      }
-    } catch (error) {
-      setSnackbarMessage('Error fetching or parsing file: ' + error.message);
-      setSnackbarOpen(true);
-    }
+  const handleRowRightClick = (event, row) => {
+    event.preventDefault();
+    setSelectedRow(row);
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
   };
 
   const handleCloseSnackbar = () => {
@@ -116,8 +153,11 @@ const ReviewETOFile = () => {
   };
 
   const handleBackClick = () => {
-    const subjectId = fileData ? fileData.subjectId : '';
-    navigate(`/upload-eto-file/${subjectId}`);
+    if (fileData) {
+      navigate(`/upload-eto-file/${fileData.subjectId}`);
+    } else {
+      navigate('/upload-eto-file');
+    }
   };
 
   const handleNextClick = () => {
@@ -136,37 +176,48 @@ const ReviewETOFile = () => {
         <Typography variant="h4" gutterBottom>
           Review ETO File
         </Typography>
+
+        <TextField
+          label="Search"
+          variant="outlined"
+          fullWidth
+          margin="normal"
+          onChange={handleSearchChange}
+        />
+
         {loading ? (
-          <p>Loading file data...</p>
-        ) : fileData ? (
-          <Paper style={{ height: 'calc(100vh - 150px)', width: '100%', overflow: 'auto' }}>
-            <div style={{ width: '100%', overflowX: 'auto' }}>
-              <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-                <thead>
-                  <tr>
-                    {columns.map((col, index) => (
-                      <th key={index} style={{ padding: '10px', textAlign: 'left', border: '1px solid #ddd' }}>
-                        {col}
-                      </th>
+          <p>Loading student data...</p>
+        ) : filteredRows.length > 0 ? (
+          <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
+            <Table stickyHeader>
+              <TableHead>
+                <TableRow>
+                  {headers.map((header) => (
+                    <TableCell key={header.id} sortDirection={sortColumn === header.id ? sortOrder : false}>
+                      <TableSortLabel
+                        active={sortColumn === header.id}
+                        direction={sortColumn === header.id ? sortOrder : 'asc'}
+                        onClick={() => handleSort(header.id)}
+                      >
+                        {header.label}
+                      </TableSortLabel>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filteredRows.map((row) => (
+                  <TableRow key={row.id} onContextMenu={(e) => handleRowRightClick(e, row)}>
+                    {headers.map((header) => (
+                      <TableCell key={header.id}>{row[header.id]}</TableCell>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length > 0 ? (
-                    rows.map((item, index) => (
-                      <TableRow key={index} item={item} columns={columns} />
-                    ))
-                  ) : (
-                    <tr>
-                      <td colSpan={columns.length} style={{ textAlign: 'center' }}>No data available.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Paper>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : (
-          <p>No file data available.</p>
+          <p>No student data available in ListOfStudents.</p>
         )}
 
         <Box sx={{ marginTop: '20px' }}>
@@ -184,6 +235,44 @@ const ReviewETOFile = () => {
           onClose={handleCloseSnackbar}
           message={snackbarMessage}
         />
+
+        <Modal open={isModalOpen} onClose={closeModal}>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '50%',
+              maxHeight: '80%',
+              overflowY: 'auto',
+              bgcolor: 'background.paper',
+              boxShadow: 24,
+              p: 4,
+            }}
+          >
+            <Typography variant="h6" component="h2" gutterBottom>
+              Row Details
+            </Typography>
+            {selectedRow &&
+              headers.map((header) => (
+                <Box key={header.id} sx={{ mb: 2 }}>
+                  <Typography variant="subtitle1" gutterBottom>
+                    <strong>{header.label}:</strong>
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    value={selectedRow[header.id]}
+                    InputProps={{ readOnly: true }}
+                    variant="outlined"
+                  />
+                </Box>
+              ))}
+            <Button onClick={closeModal} variant="contained" sx={{ mt: 2 }}>
+              Close
+            </Button>
+          </Box>
+        </Modal>
       </Box>
     </Box>
   );

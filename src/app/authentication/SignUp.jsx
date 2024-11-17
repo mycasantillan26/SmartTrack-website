@@ -212,7 +212,7 @@ const SignUp = () => {
               label="Password"
               variant="outlined"
               name="password"
-              type={showPassword ? 'text' : 'password'} // Toggle type based on showPassword
+              type={showPassword ? 'text' : 'password'} 
               value={formData.password}
               onChange={handleChange}
               required
@@ -236,7 +236,7 @@ const SignUp = () => {
               label="Confirm Password"
               variant="outlined"
               name="confirm_password"
-              type={showPassword ? 'text' : 'password'} // Toggle type based on showPassword
+              type={showPassword ? 'text' : 'password'} 
               value={formData.confirm_password}
               onChange={handleChange}
               required
@@ -281,7 +281,7 @@ const SignUp = () => {
                               fontWeight: 'bold',
                               cursor: error ? 'pointer' : 'auto'
                             }}
-                            onClick={error ? handleModalClose : null} // Close modal on Retry click
+                            onClick={error ? handleModalClose : null} 
                           >
                             {error ? 'Retry' : 'Go to Sign In'}
                           </Link>

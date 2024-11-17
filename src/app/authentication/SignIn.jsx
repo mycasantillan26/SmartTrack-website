@@ -7,18 +7,18 @@ import Loading from '../Loading/Loading';
 import logo from '../images/logo.jpeg';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
-import IconButton from '@mui/material/IconButton'; 
+import IconButton from '@mui/material/IconButton';
 import Visibility from '@mui/icons-material/Visibility';
 import VisibilityOff from '@mui/icons-material/VisibilityOff';
-import nobg from '../images/nobg.png'; 
+import nobg from '../images/nobg.png';
 
 const SignIn = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
-    const [showErrorModal, setShowErrorModal] = useState(false); 
-    const [showPassword, setShowPassword] = useState(false); 
+    const [showErrorModal, setShowErrorModal] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const navigate = useNavigate();
     const auth = getAuth();
 
@@ -28,31 +28,34 @@ const SignIn = () => {
         setLoading(true);
 
         try {
-           
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            
             if (!user.emailVerified) {
                 throw new Error("Please verify your email before signing in.");
             }
 
-          
-            navigate('/dashboard');
+            // Fetch user-specific details (mock example)
+            const firstName = "Myca"; // Replace with real data fetching
+            const lastName = "Santillan"; // Replace with real data fetching
+            const userId = user.uid; // Assuming Firebase UID serves as userId
+
+            // Navigate to the user-specific dashboard
+            navigate(`/dashboard?firstName=${firstName}&lastName=${lastName}&userId=${userId}`);
         } catch (error) {
             setError("Error signing in: " + error.message);
-            setShowErrorModal(true); 
+            setShowErrorModal(true);
         } finally {
             setLoading(false);
         }
     };
 
     const handleCloseModal = () => {
-        setShowErrorModal(false); 
+        setShowErrorModal(false);
     };
 
     const togglePasswordVisibility = () => {
-        setShowPassword(prevState => !prevState);
+        setShowPassword((prevState) => !prevState);
     };
 
     if (loading) {
@@ -62,7 +65,7 @@ const SignIn = () => {
     return (
         <div className="signin-container">
             <div className="form-container">
-                <form onSubmit={handleSubmit} id='formwrapp'>
+                <form onSubmit={handleSubmit} id="formwrapp">
                     <h2 className="form-title">Log in</h2>
                     <div className="input-group">
                         <TextField
@@ -79,7 +82,7 @@ const SignIn = () => {
                         <TextField
                             id="password"
                             label="Password"
-                            type={showPassword ? "text" : "password"} // Conditionally set the password type
+                            type={showPassword ? 'text' : 'password'}
                             variant="outlined"
                             required
                             value={password}
@@ -111,7 +114,6 @@ const SignIn = () => {
                 <img src={logo} alt="Logo" className="logo" />
             </div>
 
-            {/* Error Modal */}
             {showErrorModal && (
                 <div className="modal-overlay">
                     <div className="modal">

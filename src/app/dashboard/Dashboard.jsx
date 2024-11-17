@@ -14,18 +14,10 @@ const Dashboard = () => {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isProfileVisible, setProfileVisible] = useState(false);
-    const [showStepper, setShowStepper] = useState(false);
-    const [stepperExpanded, setStepperExpanded] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [rightPanelContent, setRightPanelContent] = useState(null);
     const [subjects, setSubjects] = useState([]);
-
-    const getQueryParams = () => {
-        const params = new URLSearchParams(location.search);
-        const subjectName = params.get('subjectName') || '';
-        const academicYear = params.get('academicYear') || '';
-        return { subjectName, academicYear };
-    };
+    const [filteredSubjects, setFilteredSubjects] = useState([]); // State to hold filtered subjects
 
     const fetchUserData = async (userId) => {
         const db = getFirestore();
@@ -34,14 +26,7 @@ const Dashboard = () => {
             const userSnapshot = await getDoc(userDoc);
             if (userSnapshot.exists()) {
                 const userData = { ...userSnapshot.data(), id: userId };
-                setUser(userData);  // Set user data
-                const { first_name, last_name } = userData;
-    
-                window.history.pushState({}, '', `?firstName=${first_name}&lastName=${last_name}&userId=${userId}`);
-                localStorage.setItem('firstName', first_name);
-                localStorage.setItem('lastName', last_name);
-    
-         
+                setUser(userData);
                 await fetchSubjectInformation(userId);
             } else {
                 console.log('No such document!');
@@ -64,6 +49,7 @@ const Dashboard = () => {
                 id: doc.id
             }));
             setSubjects(subjectsData); 
+            setFilteredSubjects(subjectsData); // Initialize filtered subjects with all subjects
         } catch (error) {
             console.error('Error fetching subjects:', error);
         }
@@ -83,39 +69,30 @@ const Dashboard = () => {
         return () => unsubscribe();
     }, []);
 
-    useEffect(() => {
-        const auth = getAuth();
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-            if (currentUser) {
-                fetchUserData(currentUser.uid); 
-            } else {
-                setUser(null);
-                setLoading(false);  
-            }
-        });
-    
-        return () => unsubscribe();
-    }, []);
-    
-
-    const handleProfileClick = () => {
-        setProfileVisible(true);
-    };
-
-    const handleCloseProfile = () => {
-        setProfileVisible(false);
-    };
-
     const handleSearchChange = (e) => {
-        setSearchQuery(e.target.value);
+        const query = e.target.value;
+        setSearchQuery(query);
+
+        // Filter subjects based on the search query
+        const filtered = subjects.filter(subject => 
+            subject.subjectName.toLowerCase().includes(query.toLowerCase()) ||
+            subject.subjectNumber.toLowerCase().includes(query.toLowerCase()) ||
+            subject.academicYear.toLowerCase().includes(query.toLowerCase()) ||
+            subject.semester.toLowerCase().includes(query.toLowerCase())
+        );
+
+        setFilteredSubjects(filtered); // Update filtered subjects state
     };
 
-    const handleCreateSubjectClick = () => {
-        navigate('/create-subject');
-    };
+    const highlightText = (text) => {
+        if (!searchQuery) return text;
 
-    const handleArrowClick = () => {
-        setStepperExpanded((prevState) => !prevState);
+        const regex = new RegExp(`(${searchQuery})`, 'gi');
+        return text.split(regex).map((part, index) => 
+            part.toLowerCase() === searchQuery.toLowerCase() ? 
+                <span key={index} style={{ backgroundColor: 'gold', fontWeight: 'bold' }}>{part}</span> : 
+                part
+        );
     };
 
     if (loading) {
@@ -126,58 +103,54 @@ const Dashboard = () => {
         return <div>Please log in to access the dashboard.</div>;
     }
 
-    const { first_name: firstName, last_name: lastName, profileImageUrl } = user;
-
     return (
         <div className="dashboard-container">
             <DashboardNavBar
-                firstName={firstName}
-                lastName={lastName}
-                profilePic={profileImageUrl}
-                onProfileClick={handleProfileClick}
+                firstName={user.first_name}
+                lastName={user.last_name}
+                profilePic={user.profileImageUrl}
+                onProfileClick={() => setProfileVisible(true)}
             />
             <Profile
                 visible={isProfileVisible}
-                onClose={handleCloseProfile}
+                onClose={() => setProfileVisible(false)}
             />
 
             <div className="dashboard-content">
-                
-                    <div className="subject-actions">
+                <div className="subject-actions">
+                    <div className="search-container">
                         <input
                             type="text"
-                            placeholder="Search subject..."
+                            placeholder="Search ..."
                             value={searchQuery}
                             onChange={handleSearchChange}
                             className="subject-search"
                         />
-                        <button onClick={handleCreateSubjectClick} className="create-subject-button">
+                        <i className="fas fa-search search-icon"></i>
+                        <button onClick={() => navigate('/create-subject')} className="create-subject-button">
                             Create Subject Information
                         </button>
                     </div>
-                
-                    <div className="cardcontainer">
-                    {subjects.map((subject) => (
+                </div>
+
+                <div className="cardcontainer">
+                    {filteredSubjects.map((subject) => (
                         <div key={subject.id} className="subject-card">
-                            <p>Subject Name: {subject.subjectName}</p>
-                            <p>Subject Number: {subject.subjectNumber}</p>
-                            <p>Academic Year: {subject.academicYear}</p>
-                            <p>Semester: {subject.semester}</p>
+                            <p>{highlightText(subject.subjectName)}</p>
+                            <p>{highlightText(subject.subjectNumber)}</p>
+                            <p>{highlightText(subject.academicYear)}</p>
+                            <p>{highlightText(subject.semester === '1st sem' ? 'First Semester' : subject.semester === '2nd sem' ? 'Second Semester' : subject.semester)}</p>
                             <button 
                                 onClick={() => navigate(`/create-subject/${subject.id}`)} 
                                 className="continue-button"
-                                style={{backgroundColor: 'gold',color:'maroon',height: '30px',borderRadius: '5px',cursor:'pointer'}}
+                                style={{backgroundColor: 'gold', color: 'maroon', height: '30px', borderRadius: '5px', cursor: 'pointer'}}
                             >
                                 Continue
                             </button>
                         </div>
- 
+                    ))}
+                </div>
 
-                        ))}
-                    </div>
-                  
-                    
-                
             </div>
         </div>
     );
