@@ -17,7 +17,7 @@ import {
   TextField,
   Modal,
 } from '@mui/material';
-import StepperComponent from '../stepper/Stepper';
+import StepperComponent from '../stepper/Stepper'; // Ensure this path is correct
 
 const ReviewETOFile = () => {
   const { docId } = useParams();
@@ -167,10 +167,7 @@ const ReviewETOFile = () => {
   return (
     <Box sx={{ display: 'flex', padding: '20px', backgroundColor: '#fff', width: '100%', height: '100vh' }}>
       <Box sx={{ flex: '0 0 300px', mr: '20px' }}>
-        <Typography variant="h6" gutterBottom>
-          Stepper
-        </Typography>
-        <StepperComponent activeStep={2} />
+        <StepperComponent activeStep={2} /> {/* Ensure this renders your stepper */}
       </Box>
       <Box sx={{ flex: '1', overflow: 'hidden' }}>
         <Typography variant="h4" gutterBottom>

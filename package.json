@@ -16,6 +16,7 @@
     "firebase": "^10.14.1",
     "http-proxy-middleware": "^3.0.3",
     "papaparse": "^5.4.1",
+    "pdfjs-dist": "^4.8.69",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-resizable": "^3.0.5",
@@ -49,5 +50,9 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "https://firebasestorage.googleapis.com"
+  "proxy": "https://firebasestorage.googleapis.com",
+  "devDependencies": {
+    "react-app-rewired": "^2.2.1",
+    "worker-loader": "^3.0.8"
+  }
 }
