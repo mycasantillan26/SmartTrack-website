@@ -30,6 +30,8 @@ const UploadCHEDFile = () => {
   const [snackbarMessage, setSnackbarMessage] = useState("");
   const [existingFile, setExistingFile] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [parsedRows, setParsedRows] = useState([]);
+
 
   useEffect(() => {
     const auth = getAuth();
@@ -66,6 +68,10 @@ const UploadCHEDFile = () => {
     fetchExistingFile();
   }, [uploadedETOFileId, userId]);
 
+
+  
+
+  
   const handleFileChange = (event) => {
     const file = event.target.files[0];
     const acceptedFileTypes = ["application/pdf"];
@@ -149,16 +155,40 @@ const UploadCHEDFile = () => {
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdf = await getDocument({ data: arrayBuffer }).promise;
       let rowCount = 0;
+      const batch = writeBatch(db); // Batch for Firestore writes
+  
+      // List of unwanted phrases
+      const unwantedPhrases = [
+        "LIST OF NSTP GRADUATES WITH SERIAL NUMBER",
+        "Name of HEI",
+        "Address",
+        "NSTP Component"
+      ];
   
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
   
+        // Log page content for debugging
+        console.log(`Processing page ${i}, content:`, textContent.items);
+  
         const rows = groupTextByYCoord(textContent.items);
   
         for (const row of rows) {
-          if (row.includes("NOTHING FOLLOWS")) {
-            setSnackbarMessage("Encountered 'NOTHING FOLLOWS'. Stopping row insertion.");
+          // Combine row data to check for unwanted phrases or "NOTHING FOLLOWS"
+          const rowString = row.join(" ").trim();
+          console.log(`Row content: "${rowString}"`); // Debug each row
+  
+          // Skip rows containing unwanted phrases
+          if (unwantedPhrases.some((phrase) => rowString.includes(phrase))) {
+            console.log("Skipping unwanted row:", rowString);
+            continue;
+          }
+  
+          if (rowString === "NOTHING FOLLOWS") {
+            console.log("Encountered 'NOTHING FOLLOWS'. Stopping row insertion.");
+            await batch.commit(); // Commit any remaining rows
+            setSnackbarMessage(`Successfully added ${rowCount} rows to Firestore.`);
             setSnackbarOpen(true);
             navigate(`/review-ched-file/${uploadedETOFileId}`);
             return;
@@ -167,24 +197,25 @@ const UploadCHEDFile = () => {
           const rowData = mapRowToData(row);
           if (isValidRow(rowData)) {
             const docRef = doc(db, basePath, rowData.SerialNo);
-            await setDoc(docRef, rowData);
+            batch.set(docRef, rowData);
             rowCount++;
           }
         }
       }
   
+      // Commit all remaining rows in the batch
+      await batch.commit();
       setSnackbarMessage(`Successfully added ${rowCount} rows to Firestore.`);
       setSnackbarOpen(true);
       navigate(`/review-ched-file/${uploadedETOFileId}`);
     } catch (error) {
+      console.error("Error processing file:", error);
       setSnackbarMessage(`Error processing file: ${error.message}`);
       setSnackbarOpen(true);
     }
   };
   
   
-  
-  // Group text by y-coordinate
   const groupTextByYCoord = (items) => {
     const rows = [];
     let currentRow = [];
@@ -200,7 +231,7 @@ const UploadCHEDFile = () => {
         lastY = y;
       }
   
-      // New row detected based on y-coordinate difference
+      // Detect if the current item is part of the previous row
       if (Math.abs(y - lastY) > 5) {
         if (currentRow.length > 0) {
           rows.push(currentRow);
@@ -216,12 +247,35 @@ const UploadCHEDFile = () => {
       rows.push(currentRow); // Add the last row
     }
   
-    return rows;
+    // Merge multi-line rows
+    const mergedRows = [];
+    let tempRow = [];
+  
+    rows.forEach((row, index) => {
+      const rowString = row.join(" ");
+      if (rowString.match(/^\d+\sSN\d+/)) {
+        // If this row starts with a valid number and serial number, it's a new row
+        if (tempRow.length > 0) {
+          mergedRows.push(tempRow);
+        }
+        tempRow = row;
+      } else {
+        // Otherwise, it's a continuation of the previous row
+        tempRow = tempRow.concat(row);
+      }
+  
+      // If it's the last row in the list, push it to mergedRows
+      if (index === rows.length - 1) {
+        mergedRows.push(tempRow);
+      }
+    });
+  
+    console.log("Grouped rows (merged):", mergedRows); // Debug merged rows
+    return mergedRows;
   };
   
-  // Map row data to structured format
+  
   const mapRowToData = (row) => {
-    // Ensure the row matches the expected structure
     if (row.length >= 6) {
       return {
         No: row[0],
@@ -235,7 +289,7 @@ const UploadCHEDFile = () => {
     return null; // Invalid row
   };
   
-  // Validate row data
+  
   const isValidRow = (rowData) => {
     return (
       rowData &&

@@ -21,6 +21,7 @@ import {
   Box,
   Typography,
   Button,
+  Modal,
 } from "@mui/material";
 import StepperComponent from "../stepper/Stepper";
 
@@ -35,6 +36,8 @@ const ReviewCHEDFile = () => {
   const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
+  const [selectedRow, setSelectedRow] = useState(null); // For storing selected row details
+  const [modalOpen, setModalOpen] = useState(false); // For modal visibility
 
   useEffect(() => {
     const fetchFirestoreData = async () => {
@@ -48,7 +51,6 @@ const ReviewCHEDFile = () => {
       try {
         const db = getFirestore();
 
-        // Fetch `subjectId` from `uploadedETOFile`
         const uploadedFileRef = doc(db, "uploadedETOFile", uploadedETOFileId);
         const uploadedFileDoc = await getDoc(uploadedFileRef);
 
@@ -61,7 +63,6 @@ const ReviewCHEDFile = () => {
 
         const { subjectId } = uploadedFileDoc.data();
 
-        // Fetch Subject Information for path construction
         const subjectDocRef = doc(db, "SubjectInformation", subjectId);
         const subjectDoc = await getDoc(subjectDocRef);
 
@@ -84,9 +85,9 @@ const ReviewCHEDFile = () => {
               "No.": index + 1,
               "Serial No.": data.SerialNo || "",
               AY: data.AY || "",
-              Surname: data.Surname || `Surname ${index + 1}`,
-              Firstname: data.Firstname || `Firstname ${index + 1}`,
-              "Middle Name": data.MiddleName || `MiddleName ${index + 1}`,
+              Surname: data.Surname || "",
+              Firstname: data.Firstname || "",
+              "Middle Name": data.MiddleName || "",
             };
           });
           setRows(extractedRows);
@@ -135,12 +136,27 @@ const ReviewCHEDFile = () => {
       const aKey = a[key] || "";
       const bKey = b[key] || "";
 
-      if (aKey.charAt(0) < bKey.charAt(0)) return direction === "asc" ? -1 : 1;
-      if (aKey.charAt(0) > bKey.charAt(0)) return direction === "asc" ? 1 : -1;
-      return 0;
+      if (!isNaN(aKey) && !isNaN(bKey)) {
+        return direction === "asc" ? aKey - bKey : bKey - aKey;
+      }
+
+      return direction === "asc"
+        ? String(aKey).localeCompare(String(bKey))
+        : String(bKey).localeCompare(String(aKey));
     });
 
     setFilteredRows(sortedRows);
+  };
+
+  const handleRowRightClick = (event, row) => {
+    event.preventDefault(); // Prevent context menu from opening
+    setSelectedRow(row); // Set selected row details
+    setModalOpen(true); // Open modal
+  };
+
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setSelectedRow(null);
   };
 
   const handleCloseSnackbar = () => {
@@ -149,27 +165,18 @@ const ReviewCHEDFile = () => {
 
   return (
     <Box sx={{ display: "flex", height: "100vh" }}>
-      {/* Left Side: Stepper */}
-      <Box
-        sx={{
-          flex: "0 0 300px",
-          padding: "20px",
-          backgroundColor: "#f5f5f5",
-        }}
-      >
+      <Box sx={{ flex: "0 0 300px", padding: "20px", backgroundColor: "#f5f5f5" }}>
         <Typography variant="h6" gutterBottom>
           Stepper
         </Typography>
         <StepperComponent activeStep={4} />
       </Box>
 
-      {/* Right Side: Table */}
       <Box sx={{ flex: "1", padding: "20px" }}>
         <Typography variant="h4" gutterBottom>
           Review CHED File
         </Typography>
 
-        {/* Search Bar */}
         <TextField
           label="Search"
           variant="outlined"
@@ -179,7 +186,6 @@ const ReviewCHEDFile = () => {
           onChange={handleSearch}
         />
 
-        {/* Scrollable Table */}
         {loading ? (
           <Typography>Loading data...</Typography>
         ) : (
@@ -188,71 +194,29 @@ const ReviewCHEDFile = () => {
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "No."}
-                        direction={sortConfig.key === "No." ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("No.")}
-                      >
-                        No.
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "Serial No."}
-                        direction={sortConfig.key === "Serial No." ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("Serial No.")}
-                      >
-                        Serial No.
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "AY"}
-                        direction={sortConfig.key === "AY" ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("AY")}
-                      >
-                        AY
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "Surname"}
-                        direction={sortConfig.key === "Surname" ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("Surname")}
-                      >
-                        Surname
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "Firstname"}
-                        direction={sortConfig.key === "Firstname" ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("Firstname")}
-                      >
-                        Firstname
-                      </TableSortLabel>
-                    </TableCell>
-                    <TableCell>
-                      <TableSortLabel
-                        active={sortConfig.key === "Middle Name"}
-                        direction={sortConfig.key === "Middle Name" ? sortConfig.direction : "asc"}
-                        onClick={() => handleSort("Middle Name")}
-                      >
-                        Middle Name
-                      </TableSortLabel>
-                    </TableCell>
+                    {Object.keys(rows[0] || {}).map((key) => (
+                      <TableCell key={key}>
+                        <TableSortLabel
+                          active={sortConfig.key === key}
+                          direction={sortConfig.key === key ? sortConfig.direction : "asc"}
+                          onClick={() => handleSort(key)}
+                        >
+                          {key}
+                        </TableSortLabel>
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {filteredRows.map((row, index) => (
-                    <TableRow key={index}>
-                      <TableCell>{row["No."]}</TableCell>
-                      <TableCell>{row["Serial No."]}</TableCell>
-                      <TableCell>{row["AY"]}</TableCell>
-                      <TableCell>{row["Surname"]}</TableCell>
-                      <TableCell>{row["Firstname"]}</TableCell>
-                      <TableCell>{row["Middle Name"]}</TableCell>
+                    <TableRow
+                      key={index}
+                      onContextMenu={(event) => handleRowRightClick(event, row)}
+                      style={{ cursor: "context-menu" }}
+                    >
+                      {Object.values(row).map((value, cellIndex) => (
+                        <TableCell key={cellIndex}>{value}</TableCell>
+                      ))}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -261,7 +225,6 @@ const ReviewCHEDFile = () => {
           </Paper>
         )}
 
-        {/* Navigation Buttons */}
         <Box sx={{ display: "flex", justifyContent: "space-between", mt: 2 }}>
           <Button
             variant="contained"
@@ -279,13 +242,49 @@ const ReviewCHEDFile = () => {
           </Button>
         </Box>
 
-        {/* Snackbar */}
         <Snackbar
           open={snackbarOpen}
           autoHideDuration={6000}
           onClose={handleCloseSnackbar}
           message={snackbarMessage}
         />
+
+        <Modal open={modalOpen} onClose={handleCloseModal}>
+          <Box
+            sx={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              width: 400,
+              bgcolor: "background.paper",
+              boxShadow: 24,
+              p: 4,
+              borderRadius: 2,
+            }}
+          >
+            <Typography variant="h6" gutterBottom>
+              Row Details
+            </Typography>
+            {selectedRow &&
+              Object.entries(selectedRow).map(([key, value]) => (
+                <TextField
+                  key={key}
+                  label={key}
+                  value={value}
+                  fullWidth
+                  variant="outlined"
+                  margin="normal"
+                  InputProps={{
+                    readOnly: true,
+                  }}
+                />
+              ))}
+            <Button variant="contained" fullWidth onClick={handleCloseModal}>
+              Close
+            </Button>
+          </Box>
+        </Modal>
       </Box>
     </Box>
   );
