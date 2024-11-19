@@ -46,7 +46,7 @@ export const steps = [
     content: <ReviewCHEDFile />,
   },
   {
-    label: 'Upload Student Details File',
+    label: 'Generate Serial Number',
     description: 'Upload Excel with student details; view, download, or share.',
     route: '/upload-student-details-file', 
     content: <UploadStudentFileDetails />,

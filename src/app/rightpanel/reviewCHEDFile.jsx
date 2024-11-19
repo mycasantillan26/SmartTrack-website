@@ -1,41 +1,43 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getFirestore, query, where, collection, getDocs } from "firebase/firestore";
-import { getStorage, ref, getDownloadURL } from "firebase/storage";
-import Snackbar from "@mui/material/Snackbar";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
-import Paper from "@mui/material/Paper";
+import {
+  getFirestore,
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+} from "firebase/firestore";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  TextField,
+  Paper,
+  TableSortLabel,
+  Snackbar,
+  Box,
+  Typography,
+  Button,
+} from "@mui/material";
 import StepperComponent from "../stepper/Stepper";
-import Button from "@mui/material/Button";
-import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
-
-GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
-
-const HEADER_COLUMNS = ["No.", "Serial No.", "AY", "Surname", "Firstname", "Middle Name"];
-
-const TableRow = ({ item }) => (
-  <tr>
-    {HEADER_COLUMNS.map((col, index) => (
-      <td key={index} style={{ padding: "10px", border: "1px solid #ddd", textAlign: "left" }}>
-        {item[col] || ""}
-      </td>
-    ))}
-  </tr>
-);
 
 const ReviewCHEDFile = () => {
   const { documentId: uploadedETOFileId } = useParams();
-  const [fileData, setFileData] = useState(null);
+  const navigate = useNavigate();
+
+  const [rows, setRows] = useState([]);
+  const [filteredRows, setFilteredRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
-  const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
-  const storage = getStorage();
 
   useEffect(() => {
-    const fetchFileData = async () => {
+    const fetchFirestoreData = async () => {
       if (!uploadedETOFileId) {
         setSnackbarMessage("Uploaded ETO File ID is not available.");
         setSnackbarOpen(true);
@@ -45,178 +47,239 @@ const ReviewCHEDFile = () => {
 
       try {
         const db = getFirestore();
-        const q = query(
-          collection(db, "uploadedCHEDFile"),
-          where("uploadedETOFileId", "==", uploadedETOFileId)
-        );
-        const querySnapshot = await getDocs(q);
 
-        if (!querySnapshot.empty) {
-          const fileDoc = querySnapshot.docs[0];
-          const fileData = fileDoc.data();
-          setFileData(fileData);
+        // Fetch `subjectId` from `uploadedETOFile`
+        const uploadedFileRef = doc(db, "uploadedETOFile", uploadedETOFileId);
+        const uploadedFileDoc = await getDoc(uploadedFileRef);
 
-          const { fileName, uploadedETOFileId } = fileData;
-          const fileRef = ref(storage, `CHEDFile/${uploadedETOFileId}/${fileName}`);
-          const fileURL = await getDownloadURL(fileRef);
+        if (!uploadedFileDoc.exists()) {
+          setSnackbarMessage("Uploaded ETO File not found.");
+          setSnackbarOpen(true);
+          setLoading(false);
+          return;
+        }
 
-          await fetchAndParsePDF(fileURL);
+        const { subjectId } = uploadedFileDoc.data();
+
+        // Fetch Subject Information for path construction
+        const subjectDocRef = doc(db, "SubjectInformation", subjectId);
+        const subjectDoc = await getDoc(subjectDocRef);
+
+        if (!subjectDoc.exists()) {
+          setSnackbarMessage("Subject information not found.");
+          setSnackbarOpen(true);
+          setLoading(false);
+          return;
+        }
+
+        const { subjectNumber, semester, academicYear } = subjectDoc.data();
+        const basePath = `StudentwithSerialNumber/${subjectNumber}-${semester}-${academicYear}/student`;
+        const studentCollection = collection(db, basePath);
+        const studentDocs = await getDocs(studentCollection);
+
+        if (!studentDocs.empty) {
+          const extractedRows = studentDocs.docs.map((doc, index) => {
+            const data = doc.data();
+            return {
+              "No.": index + 1,
+              "Serial No.": data.SerialNo || "",
+              AY: data.AY || "",
+              Surname: data.Surname || `Surname ${index + 1}`,
+              Firstname: data.Firstname || `Firstname ${index + 1}`,
+              "Middle Name": data.MiddleName || `MiddleName ${index + 1}`,
+            };
+          });
+          setRows(extractedRows);
+          setFilteredRows(extractedRows);
         } else {
-          setSnackbarMessage("No document found for the provided Uploaded ETO File ID.");
+          setSnackbarMessage("No student data found.");
           setSnackbarOpen(true);
         }
       } catch (error) {
-        setSnackbarMessage("Error fetching document: " + error.message);
+        setSnackbarMessage("Error fetching data: " + error.message);
         setSnackbarOpen(true);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchFileData();
+    fetchFirestoreData();
   }, [uploadedETOFileId]);
 
-  const fetchAndParsePDF = async (url) => {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error("Failed to fetch PDF from the server.");
-      }
+  const handleSearch = (event) => {
+    const query = event.target.value.toLowerCase();
+    setSearchQuery(query);
 
-      const arrayBuffer = await response.arrayBuffer();
-      const pdf = await getDocument({ data: arrayBuffer }).promise;
-
-      const extractedRows = [];
-      let headerDetected = false;
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-
-        const rowsByYCoord = groupTextByYCoord(textContent.items);
-
-        rowsByYCoord.forEach((row) => {
-          const rowText = row.map((item) => item.str.trim()).filter(Boolean);
-
-          console.log("Raw Row Text:", rowText);
-
-          if (!headerDetected && isHeaderRow(rowText)) {
-            headerDetected = true;
-          } else if (headerDetected) {
-            const rowData = mapRowToHeaders(rowText);
-            if (rowData) {
-              console.log("Mapped Row:", rowData);
-              extractedRows.push(rowData);
-            }
-          }
-        });
-      }
-
-      if (extractedRows.length > 0) {
-        setRows(extractedRows);
-      } else {
-        setSnackbarMessage("No valid data rows found in the PDF.");
-        setSnackbarOpen(true);
-      }
-    } catch (error) {
-      setSnackbarMessage("Error parsing PDF: " + error.message);
-      setSnackbarOpen(true);
+    if (query === "") {
+      setFilteredRows(rows);
+    } else {
+      setFilteredRows(
+        rows.filter(
+          (row) =>
+            row["No."].toString().toLowerCase().includes(query) ||
+            row["Serial No."].toLowerCase().includes(query) ||
+            row["AY"].toLowerCase().includes(query) ||
+            row["Surname"].toLowerCase().includes(query) ||
+            row["Firstname"].toLowerCase().includes(query) ||
+            (row["Middle Name"] && row["Middle Name"].toLowerCase().includes(query))
+        )
+      );
     }
   };
 
-  const groupTextByYCoord = (items) => {
-    const rows = [];
-    let currentRow = [];
-    let lastY = null;
+  const handleSort = (key) => {
+    const direction = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    setSortConfig({ key, direction });
 
-    items.forEach((item) => {
-      if (!item.str.trim()) return; // Skip empty strings
-      if (lastY === null) lastY = item.transform[5];
+    const sortedRows = [...filteredRows].sort((a, b) => {
+      const aKey = a[key] || "";
+      const bKey = b[key] || "";
 
-      if (Math.abs(item.transform[5] - lastY) > 5) {
-        if (currentRow.length > 0) rows.push(currentRow);
-        currentRow = [];
-      }
-
-      currentRow.push(item);
-      lastY = item.transform[5];
+      if (aKey.charAt(0) < bKey.charAt(0)) return direction === "asc" ? -1 : 1;
+      if (aKey.charAt(0) > bKey.charAt(0)) return direction === "asc" ? 1 : -1;
+      return 0;
     });
 
-    if (currentRow.length > 0) rows.push(currentRow);
-    return rows;
-  };
-
-  const isHeaderRow = (rowText) => {
-    const normalizedRow = rowText.join(" ").toLowerCase();
-    const normalizedHeader = HEADER_COLUMNS.join(" ").toLowerCase();
-    return normalizedRow.includes(normalizedHeader);
-  };
-
-  const mapRowToHeaders = (rowText) => {
-    const rowData = {};
-    HEADER_COLUMNS.forEach((header, index) => {
-      rowData[header] = rowText[index] || "";
-    });
-
-    return rowData;
+    setFilteredRows(sortedRows);
   };
 
   const handleCloseSnackbar = () => {
     setSnackbarOpen(false);
   };
 
-  const handleBackClick = () => {
-    navigate(-1);
-  };
-
-  const handleNextClick = () => {
-    navigate(`/next-step`);
-  };
-
   return (
-    <Box sx={{ display: "flex", padding: "20px", backgroundColor: "#fff", width: "100%", height: "100vh" }}>
-      <Box sx={{ flex: "0 0 300px", mr: "20px" }}>
+    <Box sx={{ display: "flex", height: "100vh" }}>
+      {/* Left Side: Stepper */}
+      <Box
+        sx={{
+          flex: "0 0 300px",
+          padding: "20px",
+          backgroundColor: "#f5f5f5",
+        }}
+      >
         <Typography variant="h6" gutterBottom>
           Stepper
         </Typography>
         <StepperComponent activeStep={4} />
       </Box>
-      <Box sx={{ flex: "1", overflow: "hidden" }}>
+
+      {/* Right Side: Table */}
+      <Box sx={{ flex: "1", padding: "20px" }}>
         <Typography variant="h4" gutterBottom>
           Review CHED File
         </Typography>
+
+        {/* Search Bar */}
+        <TextField
+          label="Search"
+          variant="outlined"
+          fullWidth
+          margin="normal"
+          value={searchQuery}
+          onChange={handleSearch}
+        />
+
+        {/* Scrollable Table */}
         {loading ? (
-          <p>Loading file data...</p>
-        ) : fileData ? (
-          <Paper style={{ height: "calc(100vh - 150px)", width: "100%", overflow: "auto" }}>
-            <div style={{ width: "100%", overflowX: "auto" }}>
-              <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                <thead>
-                  <tr>
-                    {HEADER_COLUMNS.map((header) => (
-                      <th key={header} style={{ padding: "10px", textAlign: "center", border: "1px solid #ddd" }}>
-                        {header}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.length > 0 ? (
-                    rows.map((item, index) => <TableRow key={index} item={item} />)
-                  ) : (
-                    <tr>
-                      <td colSpan="6" style={{ textAlign: "center" }}>
-                        No data available.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Paper>
+          <Typography>Loading data...</Typography>
         ) : (
-          <p>No file data available.</p>
+          <Paper style={{ height: "calc(100vh - 250px)", overflow: "auto" }}>
+            <TableContainer>
+              <Table stickyHeader>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "No."}
+                        direction={sortConfig.key === "No." ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("No.")}
+                      >
+                        No.
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "Serial No."}
+                        direction={sortConfig.key === "Serial No." ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("Serial No.")}
+                      >
+                        Serial No.
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "AY"}
+                        direction={sortConfig.key === "AY" ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("AY")}
+                      >
+                        AY
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "Surname"}
+                        direction={sortConfig.key === "Surname" ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("Surname")}
+                      >
+                        Surname
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "Firstname"}
+                        direction={sortConfig.key === "Firstname" ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("Firstname")}
+                      >
+                        Firstname
+                      </TableSortLabel>
+                    </TableCell>
+                    <TableCell>
+                      <TableSortLabel
+                        active={sortConfig.key === "Middle Name"}
+                        direction={sortConfig.key === "Middle Name" ? sortConfig.direction : "asc"}
+                        onClick={() => handleSort("Middle Name")}
+                      >
+                        Middle Name
+                      </TableSortLabel>
+                    </TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {filteredRows.map((row, index) => (
+                    <TableRow key={index}>
+                      <TableCell>{row["No."]}</TableCell>
+                      <TableCell>{row["Serial No."]}</TableCell>
+                      <TableCell>{row["AY"]}</TableCell>
+                      <TableCell>{row["Surname"]}</TableCell>
+                      <TableCell>{row["Firstname"]}</TableCell>
+                      <TableCell>{row["Middle Name"]}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Paper>
         )}
+
+        {/* Navigation Buttons */}
+        <Box sx={{ display: "flex", justifyContent: "space-between", mt: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={() => navigate(`/upload-ched-file/${uploadedETOFileId}`)}
+          >
+            Back
+          </Button>
+          <Button
+            variant="contained"
+            color="secondary"
+            onClick={() => navigate(`/upload-student-details-file`)}
+          >
+            Next
+          </Button>
+        </Box>
+
+        {/* Snackbar */}
         <Snackbar
           open={snackbarOpen}
           autoHideDuration={6000}
