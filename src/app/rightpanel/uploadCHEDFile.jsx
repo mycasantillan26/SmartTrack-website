@@ -91,26 +91,24 @@ const UploadCHEDFile = () => {
   
       // Check if there's already an existing file
       if (existingFile) {
-        // Allow proceeding without uploading a new file
         setSnackbarMessage("Proceeding to the next step with the existing file.");
         setSnackbarOpen(true);
         navigate(`/review-ched-file/${uploadedETOFileId}`);
         return;
       }
   
-      // If no file is uploaded yet, ensure a new file is selected
       if (!selectedFile) {
         setSnackbarMessage("Please upload a file before proceeding.");
         setSnackbarOpen(true);
         return;
       }
   
-      // Upload new file
+      // Upload the file
       const fileRef = ref(storage, `CHEDFile/${uploadedETOFileId}/${selectedFile.name}`);
       await uploadBytes(fileRef, selectedFile);
       const fileURL = await getDownloadURL(fileRef);
   
-      // Save metadata about the uploaded file
+      // Save file metadata
       await setDoc(doc(db, "uploadedCHEDFile", `${userId}_${uploadedETOFileId}`), {
         uploadedETOFileId,
         userId,
@@ -122,7 +120,7 @@ const UploadCHEDFile = () => {
       setSnackbarMessage("File uploaded successfully. Parsing PDF...");
       setSnackbarOpen(true);
   
-      // Fetch `subjectId` from `uploadedETOFile`
+      // Fetch `subjectId`
       const uploadedFileRef = doc(db, "uploadedETOFile", uploadedETOFileId);
       const uploadedFileDoc = await getDoc(uploadedFileRef);
   
@@ -134,7 +132,7 @@ const UploadCHEDFile = () => {
   
       const { subjectId } = uploadedFileDoc.data();
   
-      // Fetch Subject Information for path construction
+      // Fetch Subject Information
       const subjectDocRef = doc(db, "SubjectInformation", subjectId);
       const subjectDoc = await getDoc(subjectDocRef);
   
@@ -147,22 +145,26 @@ const UploadCHEDFile = () => {
       const { subjectNumber, semester, academicYear } = subjectDoc.data();
       const basePath = `StudentwithSerialNumber/${subjectNumber}-${semester}-${academicYear}/student`;
   
-      // Parse PDF and add rows to Firestore
+      // Parse PDF
       const arrayBuffer = await selectedFile.arrayBuffer();
       const pdf = await getDocument({ data: arrayBuffer }).promise;
-  
       let rowCount = 0;
   
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
   
-        let rows = groupTextByYCoord(textContent.items);
+        const rows = groupTextByYCoord(textContent.items);
   
-        for (let j = 0; j < rows.length; j++) {
-          const row = rows[j];
+        for (const row of rows) {
+          if (row.includes("NOTHING FOLLOWS")) {
+            setSnackbarMessage("Encountered 'NOTHING FOLLOWS'. Stopping row insertion.");
+            setSnackbarOpen(true);
+            navigate(`/review-ched-file/${uploadedETOFileId}`);
+            return;
+          }
+  
           const rowData = mapRowToData(row);
-  
           if (isValidRow(rowData)) {
             const docRef = doc(db, basePath, rowData.SerialNo);
             await setDoc(docRef, rowData);
@@ -172,12 +174,14 @@ const UploadCHEDFile = () => {
       }
   
       setSnackbarMessage(`Successfully added ${rowCount} rows to Firestore.`);
+      setSnackbarOpen(true);
       navigate(`/review-ched-file/${uploadedETOFileId}`);
     } catch (error) {
       setSnackbarMessage(`Error processing file: ${error.message}`);
       setSnackbarOpen(true);
     }
   };
+  
   
   
   // Group text by y-coordinate
@@ -251,25 +255,117 @@ const UploadCHEDFile = () => {
       setSnackbarOpen(true);
       return;
     }
-
+  
     try {
       const db = getFirestore();
       const storage = getStorage();
-
+  
+      // Step 1: Verify and delete the file from Firebase Storage
       const fileRef = ref(storage, `CHEDFile/${uploadedETOFileId}/${existingFile.fileName}`);
-      await deleteObject(fileRef);
-
+      const fileExists = await getDownloadURL(fileRef)
+        .then(() => true)
+        .catch(() => false);
+  
+      if (fileExists) {
+        await deleteObject(fileRef);
+        console.log(`Deleted file from Firebase Storage: ${existingFile.fileName}`);
+      } else {
+        console.warn("File does not exist in Firebase Storage.");
+      }
+  
+      // Step 2: Delete metadata in uploadedCHEDFile
       const fileDocRef = doc(db, "uploadedCHEDFile", `${userId}_${uploadedETOFileId}`);
-      await deleteDoc(fileDocRef);
-
-      setSnackbarMessage("File removed successfully.");
+      const fileDoc = await getDoc(fileDocRef);
+  
+      if (fileDoc.exists()) {
+        await deleteDoc(fileDocRef);
+        console.log(`Deleted metadata for file: ${existingFile.fileName}`);
+      } else {
+        console.warn("File metadata not found in uploadedCHEDFile.");
+      }
+  
+      // Step 3: Fetch the uploadedETOFile using the uploadedETOFileId from uploadedCHEDFile
+      const uploadedETOFileRef = doc(db, "uploadedETOFile", uploadedETOFileId);
+      const uploadedETOFileDoc = await getDoc(uploadedETOFileRef);
+  
+      if (!uploadedETOFileDoc.exists()) {
+        console.warn(`Uploaded ETO File not found for ID: ${uploadedETOFileId}`);
+        setSnackbarMessage("Uploaded ETO File not found. Cannot proceed.");
+        setSnackbarOpen(true);
+        return;
+      }
+  
+      const { subjectId } = uploadedETOFileDoc.data();
+      if (!subjectId) {
+        console.warn("No subjectId found in uploadedETOFile metadata.");
+        setSnackbarMessage("Subject information is missing. Cannot delete student records.");
+        setSnackbarOpen(true);
+        return;
+      }
+  
+      // Step 4: Fetch subject information using the subjectId
+      const subjectDocRef = doc(db, "SubjectInformation", subjectId);
+      const subjectDoc = await getDoc(subjectDocRef);
+  
+      if (!subjectDoc.exists()) {
+        console.warn(`Subject information not found for subjectId: ${subjectId}`);
+        setSnackbarMessage("Subject information not found. Cannot delete student records.");
+        setSnackbarOpen(true);
+        return;
+      }
+  
+      const { subjectNumber, semester, academicYear } = subjectDoc.data();
+      if (!subjectNumber || !semester || !academicYear) {
+        console.warn("Incomplete subject information. Cannot proceed with deletion.");
+        setSnackbarMessage("Incomplete subject information. Cannot delete student records.");
+        setSnackbarOpen(true);
+        return;
+      }
+  
+      const basePath = `StudentwithSerialNumber/${subjectNumber}-${semester}-${academicYear}`;
+  
+      // Step 5: Delete all student records under the subject
+      const studentCollectionRef = collection(db, `${basePath}/student`);
+      const studentDocs = await getDocs(studentCollectionRef);
+  
+      if (!studentDocs.empty) {
+        const batch = writeBatch(db);
+        console.log("Deleting the following student records:");
+  
+        studentDocs.forEach((doc) => {
+          console.log(`- SerialNo: ${doc.id}, Data:`, doc.data());
+          batch.delete(doc.ref);
+        });
+  
+        await batch.commit();
+        console.log("All student records under StudentwithSerialNumber deleted successfully.");
+      } else {
+        console.log("No student records found to delete.");
+      }
+  
+      // Step 6: Delete the parent folder
+      const parentFolderRef = doc(db, `StudentwithSerialNumber`, `${subjectNumber}-${semester}-${academicYear}`);
+      const parentFolderDoc = await getDoc(parentFolderRef);
+  
+      if (parentFolderDoc.exists()) {
+        await deleteDoc(parentFolderRef);
+        console.log(`Deleted parent folder: ${basePath}`);
+      } else {
+        console.warn(`Parent folder ${basePath} does not exist.`);
+      }
+  
+      setSnackbarMessage("File and all associated student records removed successfully.");
+      setSnackbarOpen(true);
       setExistingFile(null);
     } catch (error) {
-      setSnackbarMessage(`Error removing file: ${error.message}`);
+      console.error("Error removing file and student records:", error);
+      setSnackbarMessage(`Error removing file and student records: ${error.message}`);
       setSnackbarOpen(true);
     }
   };
-
+  
+  
+  
   return (
     <Box sx={{ display: "flex", padding: "20px" }}>
       <Box sx={{ flex: "0 0 300px", mr: "20px" }}>
