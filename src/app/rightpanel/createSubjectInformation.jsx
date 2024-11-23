@@ -1,170 +1,228 @@
-  import React, { useState, useEffect } from 'react';
-  import { initializeApp } from 'firebase/app';
-  import { getFirestore, doc, setDoc, collection, getDoc } from 'firebase/firestore';
-  import { getAuth, onAuthStateChanged } from 'firebase/auth';
-  import { useNavigate, useLocation } from 'react-router-dom';  
-  import Box from '@mui/material/Box';
-  import Button from '@mui/material/Button';
-  import Snackbar from '@mui/material/Snackbar';
-  import Alert from '@mui/material/Alert';
-  import TextField from '@mui/material/TextField';
-  import CircularProgress from '@mui/material/CircularProgress';
-  import Slide from '@mui/material/Slide';
-  import { v4 as uuidv4 } from 'uuid';
-  import Panel from '../dashboard/panel'; 
-  import StepperComponent from '../stepper/Stepper'; 
-  import Typography from '@mui/material/Typography';
-  import { db, auth} from '../../firebaseConfig';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import Box from '@mui/material/Box';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
+import TextField from '@mui/material/TextField';
+import CircularProgress from '@mui/material/CircularProgress';
+import Slide from '@mui/material/Slide';
+import Typography from '@mui/material/Typography';
+import StepperComponent from '../stepper/Stepper';
+import Loading from '../Loading/Loading';
+import DashboardNavBar from '../navbar/DashboardNavBar';
+import { db } from '../../firebaseConfig';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { v4 as uuidv4 } from 'uuid';
+import arrowIcon from '../images/arrow.png';
+import Button from '@mui/material/Button';
 
+function SlideTransition(props) {
+  return <Slide {...props} direction="up" />;
+}
 
+const CreateSubjectInformation = () => {
+  const [subjectName, setSubjectName] = useState('');
+  const [subjectNumber, setSubjectNumber] = useState('');
+  const [semester, setSemester] = useState('');
+  const [academicYear, setAcademicYear] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [openSnackbar, setOpenSnackbar] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [academicYears, setAcademicYears] = useState([]);
+  const [userData, setUserData] = useState(null);
+  const [documentId, setDocumentId] = useState(null);
+  const [isPageLoading, setIsPageLoading] = useState(true);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  function SlideTransition(props) {
-    return <Slide {...props} direction="up" />;
+  useEffect(() => {
+    const currentYear = new Date().getFullYear();
+    const generatedYears = Array.from({ length: 3 }, (_, i) => `${currentYear - 1 + i}-${currentYear + i}`);
+    setAcademicYears(generatedYears);
+    setAcademicYear(generatedYears[1]);
+
+    const queryParams = new URLSearchParams(location.search);
+    const userId = queryParams.get('userId');
+
+    if (userId) {
+      fetchUserData(userId);
+    }
+
+    const subjectId = location.pathname.split('/').pop();
+    if (subjectId && subjectId !== 'create-subject') {
+      setDocumentId(subjectId);
+      fetchSubjectData(subjectId);
+    } else {
+      setIsPageLoading(false);
+    }
+  }, [location.search, location.pathname]);
+
+  const fetchUserData = async (userId) => {
+    try {
+      const docRef = doc(db, 'users', userId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        setUserData(docSnap.data());
+      } else {
+        console.error('No user document found.');
+      }
+    } catch (error) {
+      console.error('Error fetching user details:', error);
+    }
+  };
+
+  const fetchSubjectData = async (subjectId) => {
+    try {
+      const docRef = doc(db, 'SubjectInformation', subjectId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setSubjectName(data.subjectName || '');
+        setSubjectNumber(data.subjectNumber || '');
+        setSemester(data.semester || '');
+        setAcademicYear(data.academicYear || '');
+      } else {
+        setSnackbarMessage('No subject found for the given ID.');
+        setOpenSnackbar(true);
+      }
+    } catch (error) {
+      setSnackbarMessage(`Error fetching subject information: ${error.message}`);
+      setOpenSnackbar(true);
+    } finally {
+      setIsPageLoading(false);
+    }
+  };
+
+  const handleBackClick = () => {
+    const queryParams = new URLSearchParams(location.search);
+    const userId = queryParams.get('userId');
+    const { first_name = 'Guest', last_name = 'User' } = userData || {};
+  
+    if (userId) {
+      navigate(
+        `/dashboard?firstName=${encodeURIComponent(first_name)}&lastName=${encodeURIComponent(last_name)}&userId=${encodeURIComponent(
+          userId
+        )}`
+      );
+    } else {
+      console.error('User ID is missing.');
+    }
+  };
+  
+
+  const handleSubmit = async () => {
+    if (!subjectName || !subjectNumber || !semester || !academicYear) {
+      setSnackbarMessage('Please fill in all fields.');
+      setOpenSnackbar(true);
+      return;
+    }
+  
+    // Ensure userId is available
+    const queryParams = new URLSearchParams(location.search);
+    const userId = queryParams.get('userId');
+  
+    if (!userId) {
+      setSnackbarMessage('User ID not found. Please log in.');
+      setOpenSnackbar(true);
+      return;
+    }
+  
+    try {
+      setLoading(true);
+      const subjectId = documentId || uuidv4();
+      const docRef = doc(db, 'SubjectInformation', subjectId);
+  
+      await setDoc(docRef, {
+        subjectName,
+        subjectNumber,
+        semester,
+        academicYear,
+        userId, // Use the retrieved userId
+        createdAt: new Date(),
+      });
+  
+      setSnackbarMessage('Subject information submitted successfully.');
+      setOpenSnackbar(true);
+      navigate(`/upload-eto-file/${subjectId}?userId=${userId}`); // Pass the userId for continuity
+    } catch (error) {
+      setSnackbarMessage(`Error submitting subject information: ${error.message}`);
+      setOpenSnackbar(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+
+  const handleSnackbarClose = () => setOpenSnackbar(false);
+
+  if (isPageLoading) {
+    return <Loading />;
   }
 
-  const CreateSubjectInformation = () => {
-    const [subjectName, setSubjectName] = useState('');
-    const [subjectNumber, setSubjectNumber] = useState('');
-    const [semester, setSemester] = useState('');
-    const [academicYear, setAcademicYear] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [openSnackbar, setOpenSnackbar] = useState(false);
-    const [snackbarMessage, setSnackbarMessage] = useState('');
-    const [academicYears, setAcademicYears] = useState([]);
-    const [user, setUser] = useState(null);
-    const [documentId, setDocumentId] = useState(null);
-    const navigate = useNavigate();
-    const location = useLocation(); 
+  return (
+    <>
+      <DashboardNavBar
+        firstName={userData?.first_name || 'Guest'}
+        lastName={userData?.last_name || 'User'}
+        profilePic={userData?.profileImageUrl}
+        disableProfileClick // Ensure this is handled in the `DashboardNavBar` component
+      />
 
-    
-    const generateAcademicYears = () => {
-      const currentYear = new Date().getFullYear();
-      const years = [];
-      for (let i = -1; i <= 1; i++) {
-        const startYear = currentYear + i;
-        const endYear = startYear + 1;
-        years.push(`${startYear}-${endYear}`);
-      }
-      return years;
-    };
-
-    useEffect(() => {
-      
-      const years = generateAcademicYears();
-      setAcademicYears(years);
-      setAcademicYear(years[1]);
-    
-      const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-        setUser(currentUser);
-      });
-    
-     
-      const subjectId = location.pathname.split('/').pop(); 
-      if (subjectId && subjectId !== 'create-subject') { 
-        setDocumentId(subjectId);
-        fetchSubjectData(subjectId); 
-      } else {
-        setDocumentId(null); 
-      }
-    
-      return () => unsubscribe();
-    }, [location.pathname]);
-
-    const fetchSubjectData = async (subjectId) => {
-      setLoading(true);
-      try {
-        const docRef = doc(db, 'SubjectInformation', subjectId);
-        const docSnap = await getDoc(docRef);
-
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setSubjectName(data.subjectName);
-          setSubjectNumber(data.subjectNumber);
-          setSemester(data.semester);
-          setAcademicYear(data.academicYear);
-        } else {
-          setSnackbarMessage('No subject found for the given ID.');
-          setOpenSnackbar(true);
-        }
-      } catch (error) {
-        setSnackbarMessage('Error fetching subject information: ' + error.message);
-        setOpenSnackbar(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const handleSubmit = async () => {
-      setLoading(true);
-     
-      // Validate inputs
-      if (!subjectName || !subjectNumber || !semester || !academicYear) {
-        setSnackbarMessage('Please fill in all fields.');
-        setLoading(false);
-        setOpenSnackbar(true);
-        return;
-      }
-     
-      if (!user) {
-        setSnackbarMessage('User not authenticated. Please log in.');
-        setLoading(false);
-        setOpenSnackbar(true);
-        return;
-      }
-     
-      try {
-       
-        const subjectId = documentId || uuidv4(); 
-     
-        const docRef = doc(db, 'SubjectInformation', subjectId);
-     
-        await setDoc(docRef, {
-          subjectName,
-          subjectNumber,
-          semester,
-          academicYear,
-          userId: user.uid,
-          createdAt: new Date(),
-        });
-     
-        setSnackbarMessage('Subject information submitted successfully.');
-     
-        
-        navigate(`/upload-eto-file/${subjectId}`, { state: { subjectId } });
-     
-      } catch (error) {
-        setSnackbarMessage('Error submitting subject information: ' + error.message);
-      } finally {
-        setLoading(false);
-      
-        if (!documentId) {
-          
-          setSubjectName('');
-          setSubjectNumber('');
-          setSemester('');
-          setAcademicYear(academicYears[1]);
-          setDocumentId(null); 
-        }
-      }
-    };
-  
-    
-
-    const handleSnackbarClose = () => {
-      setOpenSnackbar(false);
-    };
-
-    return (
-      <Box sx={{ display: 'flex', padding: '20px' }}>
-        <Box sx={{ flex: '0 0 300px', marginRight: '20px' }}>
-          <Typography variant="h6" gutterBottom>
-            Stepper
-          </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: { xs: 'column', md: 'row' },
+          gap: 3,
+          backgroundColor: '#f9f9f9',
+          padding: '20px',
+          borderRadius: '10px',
+          boxShadow: '0 4px 8px rgba(0, 0, 0, 0.1)',
+        }}
+      >
+        <Box
+          sx={{
+            flex: { xs: 'none', md: '0 0 300px' },
+            backgroundColor: 'maroon',
+            color: 'white',
+            padding: '20px',
+            borderRadius: '10px',
+            boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+            <img
+              src={arrowIcon}
+              alt="Back"
+              style={{
+                cursor: 'pointer',
+                width: '24px',
+                height: '24px',
+                marginRight: '10px',
+              }}
+              onClick={handleBackClick}
+            />
+            <Typography
+              variant="h6"
+              sx={{ color: 'gold', fontWeight: 'bold', textAlign: 'center', flex: 1 }}
+            >
+              Stepper
+            </Typography>
+          </Box>
           <StepperComponent />
         </Box>
 
-        <Box sx={{ flex: '1' }}>
-          <Typography variant="h5" gutterBottom>
+        <Box
+          sx={{
+            flex: 1,
+            backgroundColor: 'white',
+            borderRadius: '10px',
+            padding: '20px',
+            boxShadow: '0 2px 5px rgba(0, 0, 0, 0.1)',
+          }}
+        >
+          <Typography variant="h5" sx={{ color: 'maroon', fontWeight: 'bold', marginBottom: '20px' }}>
             Create Subject Information
           </Typography>
 
@@ -174,7 +232,7 @@
             fullWidth
             value={subjectName}
             onChange={(e) => setSubjectName(e.target.value)}
-            sx={{ marginBottom: '20px' }}
+            sx={{ marginBottom: '20px', backgroundColor: '#f9f9f9' }}
           />
 
           <TextField
@@ -183,7 +241,7 @@
             fullWidth
             value={subjectNumber}
             onChange={(e) => setSubjectNumber(e.target.value)}
-            sx={{ marginBottom: '20px' }}
+            sx={{ marginBottom: '20px', backgroundColor: '#f9f9f9' }}
           />
 
           <TextField
@@ -196,11 +254,9 @@
             SelectProps={{
               native: true,
             }}
-            sx={{ marginBottom: '20px' }}
+            sx={{ marginBottom: '20px', backgroundColor: '#f9f9f9' }}
           >
-            <option value="" disabled>
-              Select Semester
-            </option>
+            <option value="">Select Semester</option>
             <option value="1st sem">1st Semester</option>
             <option value="2nd sem">2nd Semester</option>
             <option value="summer">Summer</option>
@@ -216,7 +272,7 @@
             SelectProps={{
               native: true,
             }}
-            sx={{ marginBottom: '20px' }}
+            sx={{ marginBottom: '20px', backgroundColor: '#f9f9f9' }}
           >
             {academicYears.map((year) => (
               <option key={year} value={year}>
@@ -225,13 +281,21 @@
             ))}
           </TextField>
 
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', marginTop: '20px' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
             <Button
               variant="contained"
               onClick={handleSubmit}
               disabled={loading}
+              sx={{
+                backgroundColor: 'maroon',
+                color: 'white',
+                fontWeight: 'bold',
+                borderRadius: '5px',
+                padding: '10px 20px',
+                '&:hover': { backgroundColor: '#800000' },
+              }}
             >
-              {loading ? <CircularProgress size={24} /> : 'Next'}
+              {loading ? <CircularProgress size={24} sx={{ color: 'gold' }} /> : 'Next'}
             </Button>
           </Box>
 
@@ -241,13 +305,21 @@
             onClose={handleSnackbarClose}
             TransitionComponent={SlideTransition}
           >
-            <Alert onClose={handleSnackbarClose} severity={snackbarMessage.includes('success') ? 'success' : 'error'}>
+            <Alert
+              onClose={handleSnackbarClose}
+              severity={snackbarMessage.includes('success') ? 'success' : 'error'}
+              sx={{
+                backgroundColor: snackbarMessage.includes('success') ? 'maroon' : 'black',
+                color: 'gold',
+              }}
+            >
               {snackbarMessage}
             </Alert>
           </Snackbar>
         </Box>
       </Box>
-    );
-  };
+    </>
+  );
+};
 
-  export default CreateSubjectInformation;
+export default CreateSubjectInformation;

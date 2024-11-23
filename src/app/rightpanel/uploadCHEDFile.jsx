@@ -15,7 +15,9 @@ import {
   collection,
   getDocs,
 } from "firebase/firestore";
+import DashboardNavBar from "../navbar/DashboardNavBar";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import arrowIcon from '../images/arrow.png';
 import { getStorage, ref, getDownloadURL, deleteObject, uploadBytes } from "firebase/storage";
 import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
 
@@ -31,19 +33,43 @@ const UploadCHEDFile = () => {
   const [existingFile, setExistingFile] = useState(null);
   const [userId, setUserId] = useState(null);
   const [parsedRows, setParsedRows] = useState([]);
+  const [userData, setUserData] = useState(null);
 
 
   useEffect(() => {
     const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const db = getFirestore();
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setUserId(user.uid);
+
+        try {
+          // Fetch user data from Firestore
+          const userDocRef = doc(db, "users", user.uid);
+          const userDoc = await getDoc(userDocRef);
+
+          if (userDoc.exists()) {
+            console.log("User data fetched:", userDoc.data());
+            setUserData(userDoc.data());
+          } else {
+            console.warn("No user data found in Firestore for:", user.uid);
+            setSnackbarMessage("User data not found in the database.");
+            setSnackbarOpen(true);
+            setUserData({ first_name: "Guest", last_name: "User" }); // Default fallback
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+          setSnackbarMessage("Error fetching user data. Please try again.");
+          setSnackbarOpen(true);
+          setUserData({ first_name: "Guest", last_name: "User" });
+        }
       } else {
-        setSnackbarMessage("Please log in to continue.");
-        setSnackbarOpen(true);
+        console.warn("No authenticated user found.");
         navigate("/login");
       }
     });
+
     return () => unsubscribe();
   }, [navigate]);
 
@@ -99,7 +125,8 @@ const UploadCHEDFile = () => {
       if (existingFile) {
         setSnackbarMessage("Proceeding to the next step with the existing file.");
         setSnackbarOpen(true);
-        navigate(`/review-ched-file/${uploadedETOFileId}`);
+        navigate(`/review-ched-file/${uploadedETOFileId}/${userId}`);
+
         return;
       }
   
@@ -190,7 +217,8 @@ const UploadCHEDFile = () => {
             await batch.commit(); // Commit any remaining rows
             setSnackbarMessage(`Successfully added ${rowCount} rows to Firestore.`);
             setSnackbarOpen(true);
-            navigate(`/review-ched-file/${uploadedETOFileId}`);
+            navigate(`/review-ched-file/${uploadedETOFileId}/${userId}`);
+
             return;
           }
   
@@ -418,63 +446,152 @@ const UploadCHEDFile = () => {
     }
   };
   
-  
+  const handleArrowClick = () => {
+    if (userData) {
+      navigate(
+        `/dashboard?firstName=${encodeURIComponent(userData.first_name || "Guest")}&lastName=${encodeURIComponent(
+          userData.last_name || "User"
+        )}&userId=${encodeURIComponent(userId)}`
+      );
+    }
+  };
+
   
   return (
-    <Box sx={{ display: "flex", padding: "20px" }}>
-      <Box sx={{ flex: "0 0 300px", mr: "20px" }}>
-        <StepperComponent activeStep={3} />
-      </Box>
-
-      <Box sx={{ flex: "1" }}>
-        <Typography variant="h4" gutterBottom>
-          Upload CHED File
-        </Typography>
-
-        {existingFile ? (
-          <Box>
-            <Typography variant="h6">Uploaded File: {existingFile.fileName}</Typography>
-            <iframe
-              src={existingFile.fileURL}
-              style={{ width: "100%", height: "400px", marginTop: "20px" }}
-              title="Uploaded PDF"
+    <>
+      <DashboardNavBar
+        firstName={userData?.first_name || "Guest"}
+        lastName={userData?.last_name || "User"}
+        profilePic={userData?.profileImageUrl}
+      />
+  
+      <Box sx={{ display: "flex", height: "100vh", padding: "20px", gap: "20px" }}>
+        {/* Stepper Section */}
+        <Box
+          sx={{
+            flex: "0 0 300px",
+            backgroundColor: "maroon",
+            color: "white",
+            borderRadius: "8px",
+            padding: "20px",
+          }}
+        >
+          <Box sx={{ display: "flex", alignItems: "center", marginBottom: "20px" }}>
+            <img
+              src={arrowIcon}
+              alt="Back"
+              style={{
+                cursor: "pointer",
+                width: "24px",
+                height: "24px",
+                marginRight: "10px",
+              }}
+              onClick={() => navigate(`/dashboard`)}
             />
+            <Typography variant="h6" sx={{ color: "gold", fontWeight: "bold", flex: 1 }}>
+              Stepper
+            </Typography>
+          </Box>
+          <StepperComponent activeStep={3} />
+        </Box>
+  
+        {/* Main Content Section */}
+        <Box
+          sx={{
+            flex: 1,
+            backgroundColor: "#fff",
+            borderRadius: "8px",
+            padding: "20px",
+            overflow: "hidden",
+          }}
+        >
+          <Typography variant="h4" sx={{ marginBottom: "20px", color: "maroon" }}>
+            Upload CHED File
+          </Typography>
+  
+          {existingFile ? (
+            <Box>
+              <Typography variant="h6">Uploaded File: {existingFile.fileName}</Typography>
+              <iframe
+                src={existingFile.fileURL}
+                style={{ width: "100%", height: "400px", marginTop: "20px" }}
+                title="Uploaded PDF"
+              />
+              <Button
+                variant="contained"
+                color="error"
+                sx={{
+                  mt: 3,
+                  backgroundColor: "red",
+                  "&:hover": { backgroundColor: "darkred" },
+                }}
+                onClick={handleRemoveFile}
+              >
+                Remove File
+              </Button>
+            </Box>
+          ) : (
+            <Box
+              sx={{
+                border: "2px dashed #ccc",
+                borderRadius: "8px",
+                padding: "20px",
+                textAlign: "center",
+                backgroundColor: "#f9f9f9",
+              }}
+            >
+              <input type="file" accept=".pdf" onChange={handleFileChange} />
+            </Box>
+          )}
+  
+          {/* Buttons Section */}
+          <Box
+            sx={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginTop: "20px",
+            }}
+          >
             <Button
               variant="contained"
-              color="error"
-              sx={{ mt: 3 }}
-              onClick={handleRemoveFile}
+              sx={{
+                backgroundColor: "maroon",
+                color: "white",
+                fontWeight: "bold",
+                width: "48%",
+                "&:hover": { backgroundColor: "#800000" },
+              }}
+              onClick={handleBack}
             >
-              Remove File
+              Back
+            </Button>
+            <Button
+              variant="contained"
+              sx={{
+                backgroundColor: "maroon",
+                color: "white",
+                fontWeight: "bold",
+                width: "48%",
+                "&:hover": { backgroundColor: "#800000" },
+              }}
+              onClick={handleNext}
+            >
+              Next
             </Button>
           </Box>
-        ) : (
-          <input type="file" accept=".pdf" onChange={handleFileChange} />
-        )}
-
-        <Box sx={{ mt: 3 }}>
-        <Button 
-        variant="contained" 
-        onClick={handleBack} 
-        sx={{ mr: 2 }}
-      >
-        Back
-      </Button>
-
-          <Button variant="contained" onClick={handleNext}>
-            Next
-          </Button>
         </Box>
       </Box>
-
+  
       <Snackbar
         open={snackbarOpen}
         onClose={() => setSnackbarOpen(false)}
         message={snackbarMessage}
         autoHideDuration={6000}
       />
-    </Box>
+    </>
   );
-};
+}
+
+  
 
 export default UploadCHEDFile;

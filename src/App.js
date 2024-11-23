@@ -30,8 +30,11 @@ const App = () => {
             <Route path="/upload-eto-file/:subjectId?" element={<UploadETOFile />} />
             <Route path="/review-eto-file/:docId" element={<ReviewETOFile />} />
             <Route path="/upload-ched-file/:uploadedETOFileId" element={<UploadCHEDFile />} />
-            <Route path="/review-ched-file/:documentId" element={<ReviewCHEDFile />} />
-            <Route path="/upload-student-details-file" element={<Panel />} />
+         <Route path="/review-ched-file/:uploadedETOFileId/:userId" element={<ReviewCHEDFile />} />
+
+            <Route path="/upload-student-details-file/:uploadedETOFileId" element={<UploadStudentFileDetails />}
+/>
+
             
         </Routes>
     );
