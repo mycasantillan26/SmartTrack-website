@@ -95,13 +95,13 @@ const UploadStudentFileDetails = () => {
               SerialNo: serial.SerialNo,
               Surname: serial.Surname,
               Firstname: serial.Firstname,
-              MiddleName: serial.MiddleName || "N/A",
-              CourseYear: student.CourseYear || "N/A",
-              Gender: student.Gender || "N/A",
-              DateOfBirth: student.DateOfBirth || "N/A",
-              HomeAddress: student.HomeAddress || "N/A",
-              ContactNumber: student.ContactNumber || "N/A",
-              EmailAddress: student.EmailAddress || "N/A",
+              MiddleName: serial.MiddleName || " ",
+              CourseYear: student.CourseYear || " ",
+              Gender: student.Gender || " ",
+              DateOfBirth: student.DateOfBirth || " ",
+              HomeAddress: student.HomeAddress || " ",
+              ContactNumber: student.ContactNumber || " ",
+              EmailAddress: student.EmailAddress || " ",
             }));
         });
 
@@ -135,14 +135,23 @@ const UploadStudentFileDetails = () => {
 
   return (
     <>
-      {/* Dashboard NavBar */}
-      <DashboardNavBar
-        firstName={userData?.firstName || "Guest"}
-        lastName={userData?.lastName || "User"}
-        profilePic={userData?.profilePic || ""} // Provide default or fetched profilePic
-      />
-
-      <Box sx={{ display: "flex", height: "100vh", padding: "20px", gap: "20px" }}>
+      {userData && (
+        <DashboardNavBar
+          firstName={userData.first_name || "Guest"}
+          lastName={userData.last_name || "User"}
+          profilePic={userData.profileImageUrl || ""}
+        />
+      )}
+  
+      <Box
+        sx={{
+          display: "flex",
+          height: "100vh", // Full viewport height
+          overflow: "hidden", // Prevent scrolling for the entire page
+          padding: "20px",
+          gap: "20px",
+        }}
+      >
         {/* Left Side: Stepper */}
         <Box
           sx={{
@@ -162,11 +171,18 @@ const UploadStudentFileDetails = () => {
               Stepper
             </Typography>
           </Box>
-          <StepperComponent activeStep={4} />
+          <StepperComponent activeStep={5} />
         </Box>
-
+  
         {/* Right Side: Main Content */}
-        <Box sx={{ flex: 1, padding: "20px" }}>
+        <Box
+          sx={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden", // Prevent page scrolling
+          }}
+        >
           <Box
             sx={{
               display: "flex",
@@ -186,18 +202,20 @@ const UploadStudentFileDetails = () => {
               Download Excel
             </Button>
           </Box>
-
-          {loading ? (
-            <Typography>Loading data...</Typography>
-          ) : mergedData.length > 0 ? (
-            <TableContainer
-              component={Paper}
-              sx={{
-                maxHeight: "calc(100vh - 250px)",
-                overflow: "auto",
-                maxWidth: "100%",
-              }}
-            >
+  
+          {/* Scrollable Table */}
+          <Box
+            component={Paper}
+            sx={{
+              flex: 1,
+              overflowY: "auto", // Only the table can scroll vertically
+              border: "1px solid #ddd",
+              borderRadius: "8px",
+            }}
+          >
+            {loading ? (
+              <Typography sx={{ padding: "20px" }}>Loading data...</Typography>
+            ) : mergedData.length > 0 ? (
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
@@ -236,13 +254,13 @@ const UploadStudentFileDetails = () => {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
-          ) : (
-            <Typography>No matching data found.</Typography>
-          )}
+            ) : (
+              <Typography sx={{ padding: "20px" }}>No matching data found.</Typography>
+            )}
+          </Box>
         </Box>
       </Box>
-
+  
       {/* Modal for Row Details */}
       <Modal open={modalOpen} onClose={() => setModalOpen(false)}>
         <MuiBox
@@ -269,6 +287,8 @@ const UploadStudentFileDetails = () => {
       </Modal>
     </>
   );
+  
+
 };
 
 export default UploadStudentFileDetails;

@@ -203,9 +203,10 @@ const ReviewCHEDFile = () => {
           profilePic={userData.profileImageUrl || ""}
         />
       )}
-
+  
       {/* Main Content */}
-      <Box sx={{ display: "flex", height: "100vh", padding: "20px", gap: "20px" }}>
+      <Box sx={{ display: "flex", height: "100vh", padding: "20px", gap: "20px", width: "100%" }}>
+        {/* Left Side: Stepper */}
         <Box
           sx={{
             flex: "0 0 300px",
@@ -228,9 +229,9 @@ const ReviewCHEDFile = () => {
           </Box>
           <StepperComponent activeStep={4} />
         </Box>
-
+  
         {/* Table and Search */}
-        <Box sx={{ flex: 1, padding: "20px" }}>
+        <Box sx={{ flex: 1, display: "flex", flexDirection: "column", padding: "20px" }}>
           <Typography variant="h4" sx={{ color: "maroon", marginBottom: "20px" }}>
             Review CHED File
           </Typography>
@@ -261,7 +262,15 @@ const ReviewCHEDFile = () => {
           {loading ? (
             <Typography>Loading data...</Typography>
           ) : (
-            <TableContainer component={Paper}>
+            <TableContainer
+              component={Paper}
+              sx={{
+                maxHeight: "calc(100vh - 300px)",
+                overflowY: "auto",
+                overflowX: "auto",
+                border: "1px solid #ddd",
+              }}
+            >
               <Table stickyHeader>
                 <TableHead>
                   <TableRow>
@@ -327,7 +336,7 @@ const ReviewCHEDFile = () => {
           </Box>
         </Box>
       </Box>
-
+  
       {/* Modal for Row Details */}
       <Modal open={modalOpen} onClose={handleCloseModal}>
         <Box
@@ -385,7 +394,7 @@ const ReviewCHEDFile = () => {
           </Button>
         </Box>
       </Modal>
-
+  
       <Snackbar
         open={snackbarOpen}
         autoHideDuration={6000}
@@ -395,5 +404,4 @@ const ReviewCHEDFile = () => {
     </>
   );
 };
-
-export default ReviewCHEDFile;
+export default ReviewCHEDFile;  
